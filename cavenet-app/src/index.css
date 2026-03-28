@@ -6,7 +6,7 @@ body {
   color: white;
   font-family: 'Segoe UI', sans-serif;
 
-  /* Cave-like background */
+  /* Cave-like layered background */
   background:
     radial-gradient(circle at 20% 20%, #1f1f1f, transparent),
     radial-gradient(circle at 80% 80%, #111, transparent),
@@ -14,7 +14,7 @@ body {
 }
 
 /* ========================= */
-/* FIRE GLOW ANIMATION */
+/* FIRE GLOW ANIMATION 🔥 */
 /* ========================= */
 @keyframes fireGlow {
   0% {
@@ -25,5 +25,38 @@ body {
   }
   100% {
     box-shadow: 0 0 10px rgba(255, 80, 0, 0.4);
+  }
+}
+
+/* ========================= */
+/* COLD BLUE GLOW ❄️ */
+/* ========================= */
+@keyframes coldGlow {
+  0% {
+    box-shadow: 0 0 15px rgba(96, 165, 250, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(96, 165, 250, 0.7);
+  }
+  100% {
+    box-shadow: 0 0 15px rgba(96, 165, 250, 0.4);
+  }
+}
+
+/* ========================= */
+/* FROST FADE (SUBTLE EFFECT) */
+/* ========================= */
+@keyframes coldFade {
+  0% {
+    opacity: 1;
+    filter: blur(0px);
+  }
+  50% {
+    opacity: 0.85;
+    filter: blur(0.4px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0px);
   }
 }

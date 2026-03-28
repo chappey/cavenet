@@ -92,13 +92,14 @@ function App() {
           placeholder="Carve your thought..."
           style={{
             width: "100%",
-            padding: 12,
+            padding: "12px 14px",
             borderRadius: 10,
             border: "none",
             marginBottom: 10,
             background: "#2a2a2a",
             color: "white",
-            fontSize: 14
+            fontSize: 14,
+            boxSizing: "border-box"
           }}
         />
 
