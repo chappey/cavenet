@@ -1,8 +1,10 @@
 import { Elysia, t } from 'elysia';
 import { db } from './db';
-import { users, threads, replies, likes, tribes, userThreadStats, userActivity, rewardEvents } from './db/schema';
-import { eq, desc, sql, and } from 'drizzle-orm';
+import { users, threads, replies, likes, tribes, userTribes, userThreadStats, userActivity, rewardEvents } from './db/schema';
+import { eq, desc, sql, and, inArray } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
+
+// ── Constants ──
 
 const POST_COST = {
   mixed: 1,
@@ -10,9 +12,12 @@ const POST_COST = {
   image: 2,
 } as const;
 
+const TRIBE_CREATION_COST = 3;
 const THREAD_FIRE_CAP = 20;
 const LIKE_FIRE_CAP = 5;
 const FIRE_DECAY_PER_DAY = 1;
+
+// ── Helpers ──
 
 const toUtcDayStart = (date: Date) => Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 
@@ -50,6 +55,11 @@ const grantThreadFire = async (tx: typeof db, userId: string, threadId: string, 
       set: { fireGenerated: sql`${userThreadStats.fireGenerated} + ${granted}` }
     });
 
+  // Also update thread aggregate fire
+  await tx.update(threads)
+    .set({ fireGenerated: sql`${threads.fireGenerated} + ${granted}` })
+    .where(eq(threads.id, threadId));
+
   return granted;
 };
 
@@ -85,27 +95,185 @@ const applyDailyDecayIfNeeded = async (tx: typeof db, userId: string) => {
     .where(eq(users.id, userId));
 };
 
-const app = new Elysia()
-  // Mock Auth Middleware: Automatically fetch/create a dummy user for the MVP
-  .derive(async () => {
-    let user = await db.query.users.findFirst();
-    if (!user) {
-      const [newUser] = await db.insert(users).values({
-        username: 'Caveman_' + Math.floor(Math.random() * 1000)
-      }).returning();
-      user = newUser;
+/** Enrich thread rows with creator username, reply count, unique poster count, recent replies */
+const enrichThreads = async (threadRows: any[]) => {
+  if (threadRows.length === 0) return [];
+
+  const threadIds = threadRows.map(t => t.id);
+
+  // Get creator usernames
+  const creatorIds = [...new Set(threadRows.map(t => t.creatorId))];
+  const creatorRows = await db.select({ id: users.id, username: users.username })
+    .from(users)
+    .where(inArray(users.id, creatorIds));
+  const creatorMap = Object.fromEntries(creatorRows.map(u => [u.id, u.username]));
+
+  // Get reply counts and unique poster counts per thread
+  const statRows = await db.select({
+    threadId: replies.threadId,
+    replyCount: sql<number>`COUNT(*)`,
+    uniquePosters: sql<number>`COUNT(DISTINCT ${replies.creatorId})`,
+    lastReplyAt: sql<number>`MAX(${replies.createdAt})`,
+  })
+    .from(replies)
+    .where(inArray(replies.threadId, threadIds))
+    .groupBy(replies.threadId);
+
+  const statMap = Object.fromEntries(statRows.map(s => [s.threadId, s]));
+
+  // Get up to 3 most recent replies per thread (with creator usernames)
+  const recentReplies = await db.select({
+    id: replies.id,
+    threadId: replies.threadId,
+    creatorId: replies.creatorId,
+    content: replies.content,
+    replyIndex: replies.replyIndex,
+    fireGenerated: replies.fireGenerated,
+    likes: replies.likes,
+    createdAt: replies.createdAt,
+    creatorUsername: users.username,
+  })
+    .from(replies)
+    .innerJoin(users, eq(replies.creatorId, users.id))
+    .where(inArray(replies.threadId, threadIds))
+    .orderBy(desc(replies.createdAt));
+
+  // Group recent replies by thread, keep only last 3
+  const replyMap: Record<string, any[]> = {};
+  for (const r of recentReplies) {
+    if (!replyMap[r.threadId]) replyMap[r.threadId] = [];
+    if (replyMap[r.threadId].length < 3) {
+      replyMap[r.threadId].push(r);
     }
+  }
 
-    await db.transaction(async (tx) => {
-      await applyDailyDecayIfNeeded(tx, user.id);
-    });
+  return threadRows.map(t => ({
+    ...t,
+    creatorUsername: creatorMap[t.creatorId] ?? 'Unknown',
+    replyCount: statMap[t.id]?.replyCount ?? 0,
+    uniquePosters: statMap[t.id]?.uniquePosters ?? 0,
+    lastReplyAt: statMap[t.id]?.lastReplyAt ?? null,
+    recentReplies: replyMap[t.id] ?? [],
+  }));
+};
 
-    return { userId: user.id };
+// ── App ──
+
+const app = new Elysia()
+  // Read user from X-User-Id header (no auth — just user selection)
+  .derive(async ({ request }) => {
+    const userId = request.headers.get('x-user-id');
+    if (userId) {
+      await db.transaction(async (tx) => {
+        await applyDailyDecayIfNeeded(tx, userId);
+      });
+    }
+    return { userId: userId ?? null };
   })
 
   .group('/api', (app) => app
-    // POST /api/threads (requires food)
+
+    // ── Users ──
+
+    .get('/users', async () => {
+      return await db.select({
+        id: users.id,
+        username: users.username,
+        bio: users.bio,
+        avatar: users.avatar,
+        food: users.food,
+        fire: users.fire,
+        createdAt: users.createdAt,
+      }).from(users).orderBy(users.username);
+    })
+
+    .get('/me', async ({ userId }) => {
+      if (!userId) return null;
+      const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+      return user ?? null;
+    })
+
+    .get('/users/:id', async ({ params }) => {
+      const user = await db.query.users.findFirst({
+        where: eq(users.id, params.id)
+      });
+      if (!user) throw new Error('User not found');
+
+      const userThreads = await db.query.threads.findMany({
+        where: eq(threads.creatorId, params.id),
+        orderBy: [desc(threads.createdAt)]
+      });
+
+      const enriched = await enrichThreads(userThreads);
+
+      // Get tribes user belongs to
+      const memberRows = await db.select({
+        tribeId: userTribes.tribeId,
+        tribeName: tribes.name,
+        tribeAvatar: tribes.avatar,
+        tribeDescription: tribes.description,
+      })
+        .from(userTribes)
+        .innerJoin(tribes, eq(userTribes.tribeId, tribes.id))
+        .where(eq(userTribes.userId, params.id));
+
+      return { ...user, threads: enriched, tribes: memberRows };
+    })
+
+    // ── Feed ──
+
+    .get('/feed', async ({ query }) => {
+      const sort = (query as any)?.sort ?? 'newest';
+      const tribeId = (query as any)?.tribeId;
+
+      let orderClause;
+      switch (sort) {
+        case 'hottest':
+          orderClause = [desc(threads.fireGenerated)];
+          break;
+        case 'active':
+          // We'll sort by createdAt as fallback; enrichment adds lastReplyAt for client-side re-sort
+          orderClause = [desc(threads.createdAt)];
+          break;
+        default:
+          orderClause = [desc(threads.createdAt)];
+      }
+
+      let rows;
+      if (tribeId) {
+        rows = await db.query.threads.findMany({
+          where: eq(threads.tribeId, tribeId),
+          orderBy: orderClause,
+          limit: 50
+        });
+      } else {
+        rows = await db.query.threads.findMany({
+          orderBy: orderClause,
+          limit: 50
+        });
+      }
+
+      const enriched = await enrichThreads(rows);
+
+      // For 'active' sort, re-sort by lastReplyAt on enriched data
+      if (sort === 'active') {
+        enriched.sort((a: any, b: any) => {
+          const aTime = a.lastReplyAt ?? a.createdAt;
+          const bTime = b.lastReplyAt ?? b.createdAt;
+          // Handle both Date objects and timestamps
+          const aMs = aTime instanceof Date ? aTime.getTime() : Number(aTime);
+          const bMs = bTime instanceof Date ? bTime.getTime() : Number(bTime);
+          return bMs - aMs;
+        });
+      }
+
+      return enriched;
+    })
+
+    // ── Threads ──
+
     .post('/threads', async ({ body, userId }) => {
+      if (!userId) throw new Error('No user selected');
       const cost = POST_COST[body.type as keyof typeof POST_COST] ?? POST_COST.text;
 
       const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
@@ -141,8 +309,53 @@ const app = new Elysia()
       })
     })
 
-    // POST /api/threads/:id/replies
+    .get('/threads/:id', async ({ params }) => {
+      const thread = await db.query.threads.findFirst({
+        where: eq(threads.id, params.id)
+      });
+      if (!thread) throw new Error('Thread not found');
+
+      // Get creator username
+      const creator = await db.query.users.findFirst({ where: eq(users.id, thread.creatorId) });
+
+      const threadReplies = await db.select({
+        id: replies.id,
+        threadId: replies.threadId,
+        creatorId: replies.creatorId,
+        content: replies.content,
+        replyIndex: replies.replyIndex,
+        fireGenerated: replies.fireGenerated,
+        likes: replies.likes,
+        isUnique: replies.isUnique,
+        createdAt: replies.createdAt,
+        creatorUsername: users.username,
+      })
+        .from(replies)
+        .innerJoin(users, eq(replies.creatorId, users.id))
+        .where(eq(replies.threadId, params.id))
+        .orderBy(replies.replyIndex);
+
+      // Get reply count and unique poster count
+      const statRows = await db.select({
+        replyCount: sql<number>`COUNT(*)`,
+        uniquePosters: sql<number>`COUNT(DISTINCT ${replies.creatorId})`,
+      })
+        .from(replies)
+        .where(eq(replies.threadId, params.id));
+
+      return {
+        ...thread,
+        creatorUsername: creator?.username ?? 'Unknown',
+        replyCount: statRows[0]?.replyCount ?? 0,
+        uniquePosters: statRows[0]?.uniquePosters ?? 0,
+        replies: threadReplies,
+      };
+    })
+
+    // ── Replies ──
+
     .post('/threads/:id/replies', async ({ params, body, userId }) => {
+      if (!userId) throw new Error('No user selected');
       const threadId = params.id;
       const hash = contentHash(body.content);
 
@@ -150,7 +363,6 @@ const app = new Elysia()
         const thread = await tx.query.threads.findFirst({ where: eq(threads.id, threadId) });
         if (!thread) throw new Error('Thread not found');
 
-        // Compute next index inside transaction for stable ordering under concurrent writes.
         const indexRows = await tx.select({
           nextIndex: sql<number>`COALESCE(MAX(${replies.replyIndex}), 0) + 1`
         })
@@ -236,8 +448,10 @@ const app = new Elysia()
       })
     })
 
-    // POST /api/replies/:id/like
+    // ── Likes ──
+
     .post('/replies/:id/like', async ({ params, userId }) => {
+      if (!userId) throw new Error('No user selected');
       const replyId = params.id;
 
       const outcome = await db.transaction(async (tx) => {
@@ -253,30 +467,33 @@ const app = new Elysia()
         const replyRow = await tx.query.replies.findFirst({ where: eq(replies.id, replyId) });
         if (!replyRow) throw new Error('Reply not found');
 
-        const threadRow = await tx.query.threads.findFirst({ where: eq(threads.id, replyRow.threadId) });
-        if (!threadRow) throw new Error('Thread not found');
+        // Update like count on reply
+        await tx.update(replies)
+          .set({ likes: sql`${replies.likes} + 1` })
+          .where(eq(replies.id, replyId));
 
-        // Award fire to reply creator (capped per-reply)
+        // Award fire to reply creator (capped per-reply at LIKE_FIRE_CAP)
         let awardedFire = 0;
-        const likeCount = await tx.select({ count: sql<number>`COUNT(*)` })
-          .from(likes)
-          .where(eq(likes.replyId, replyId));
-
-        if ((likeCount[0]?.count ?? 0) < LIKE_FIRE_CAP) {
+        const currentLikes = replyRow.likes ?? 0;
+        if (currentLikes < LIKE_FIRE_CAP) {
           awardedFire = 1;
           await tx.update(users)
             .set({ fire: sql`${users.fire} + 1` })
             .where(eq(users.id, replyRow.creatorId));
         }
 
-        // Like conversion: spend random(2..3) fire to gain +1 food.
-        const roll = Math.random() < 0.5 ? 2 : 3;
-        await tx.update(users)
-          .set({
-            fire: sql`MAX(${users.fire} - ${roll}, 0)`,
-            food: sql`${users.food} + 1`
-          })
-          .where(eq(users.id, userId));
+        // Like conversion: spend random(2..3) fire to gain +1 food
+        const liker = await tx.query.users.findFirst({ where: eq(users.id, userId) });
+        if (liker && liker.fire >= 2) {
+          const roll = Math.random() < 0.5 ? 2 : 3;
+          const cost = Math.min(roll, liker.fire);
+          await tx.update(users)
+            .set({
+              fire: sql`MAX(${users.fire} - ${cost}, 0)`,
+              food: sql`${users.food} + 1`
+            })
+            .where(eq(users.id, userId));
+        }
 
         await markUserActive(tx, userId);
         return { status: 'liked' as const };
@@ -285,45 +502,127 @@ const app = new Elysia()
       return outcome;
     })
 
-    .get('/feed', async () => {
-      return await db.query.threads.findMany({
+    // ── Tribes ──
+
+    .get('/tribes', async () => {
+      const allTribes = await db.query.tribes.findMany({
+        orderBy: [tribes.name]
+      });
+
+      // Get member counts
+      const countRows = await db.select({
+        tribeId: userTribes.tribeId,
+        memberCount: sql<number>`COUNT(*)`,
+      })
+        .from(userTribes)
+        .groupBy(userTribes.tribeId);
+
+      const countMap = Object.fromEntries(countRows.map(c => [c.tribeId, c.memberCount]));
+
+      return allTribes.map(t => ({
+        ...t,
+        memberCount: countMap[t.id] ?? 0,
+      }));
+    })
+
+    .get('/tribes/:id', async ({ params }) => {
+      const tribe = await db.query.tribes.findFirst({
+        where: eq(tribes.id, params.id)
+      });
+      if (!tribe) throw new Error('Tribe not found');
+
+      // Get members
+      const memberRows = await db.select({
+        id: users.id,
+        username: users.username,
+        avatar: users.avatar,
+        fire: users.fire,
+        food: users.food,
+      })
+        .from(userTribes)
+        .innerJoin(users, eq(userTribes.userId, users.id))
+        .where(eq(userTribes.tribeId, params.id));
+
+      // Get tribe threads
+      const tribeThreads = await db.query.threads.findMany({
+        where: eq(threads.tribeId, params.id),
         orderBy: [desc(threads.createdAt)],
         limit: 50
       });
+
+      const enriched = await enrichThreads(tribeThreads);
+
+      return {
+        ...tribe,
+        members: memberRows,
+        memberCount: memberRows.length,
+        threads: enriched,
+      };
     })
 
-    // GET /api/threads/:id (with replies)
-    .get('/threads/:id', async ({ params }) => {
-      const thread = await db.query.threads.findFirst({
-        where: eq(threads.id, params.id)
-      });
-      if (!thread) throw new Error('Thread not found');
+    .post('/tribes', async ({ body, userId }) => {
+      if (!userId) throw new Error('No user selected');
 
-      const threadReplies = await db.query.replies.findMany({
-        where: eq(replies.threadId, params.id),
-        orderBy: [replies.replyIndex]
-      });
-
-      return { ...thread, replies: threadReplies };
-    })
-
-    // GET /api/users/:id
-    .get('/users/:id', async ({ params }) => {
-      const user = await db.query.users.findFirst({
-        where: eq(users.id, params.id)
-      });
+      const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
       if (!user) throw new Error('User not found');
+      if (user.food < TRIBE_CREATION_COST) throw new Error('Not enough food to create tribe');
 
-      const userThreads = await db.query.threads.findMany({
-        where: eq(threads.creatorId, params.id),
-        orderBy: [desc(threads.createdAt)]
+      const tribe = await db.transaction(async (tx) => {
+        await tx.update(users)
+          .set({ food: sql`${users.food} - ${TRIBE_CREATION_COST}` })
+          .where(eq(users.id, userId));
+
+        const [newTribe] = await tx.insert(tribes).values({
+          name: body.name,
+          description: body.description,
+          creatorId: userId,
+        }).returning();
+
+        // Auto-join the creator
+        await tx.insert(userTribes).values({
+          userId,
+          tribeId: newTribe.id,
+        });
+
+        await markUserActive(tx, userId);
+        return newTribe;
       });
 
-      return { ...user, threads: userThreads };
+      return tribe;
+    }, {
+      body: t.Object({
+        name: t.String(),
+        description: t.Optional(t.String()),
+      })
     })
 
-    // POST /api/recovery
+    .post('/tribes/:id/join', async ({ params, userId }) => {
+      if (!userId) throw new Error('No user selected');
+
+      const tribe = await db.query.tribes.findFirst({ where: eq(tribes.id, params.id) });
+      if (!tribe) throw new Error('Tribe not found');
+
+      await db.insert(userTribes)
+        .values({ userId, tribeId: params.id })
+        .onConflictDoNothing();
+
+      return { status: 'joined' };
+    })
+
+    .post('/tribes/:id/leave', async ({ params, userId }) => {
+      if (!userId) throw new Error('No user selected');
+
+      await db.delete(userTribes)
+        .where(and(eq(userTribes.userId, userId), eq(userTribes.tribeId, params.id)));
+
+      return { status: 'left' };
+    })
+
+    // ── Recovery ──
+
     .post('/recovery', async ({ userId }) => {
+      if (!userId) throw new Error('No user selected');
+
       const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
       if (!user) throw new Error('User not found');
 
@@ -340,12 +639,6 @@ const app = new Elysia()
       });
 
       return { reward };
-    })
-
-    // GET /api/me
-    .get('/me', async ({ userId }) => {
-       const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
-       return user;
     })
   )
 

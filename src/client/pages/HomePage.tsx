@@ -1,84 +1,63 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import ThreadCard from '../components/ThreadCard';
+import Composer from '../components/Composer';
 
 interface HomePageProps {
   feed: any[];
-  content: string;
-  setContent: (val: string) => void;
-  handlePost: () => void;
-  handleLike: (id: string) => void;
-  handleReply: (id: string) => void;
+  onPost: (content: string) => Promise<void>;
+  onSortChange: (sort: string) => void;
+  currentSort: string;
+  userId: string | null;
 }
 
-const HomePage: React.FC<HomePageProps> = ({ feed, content, setContent, handlePost, handleLike, handleReply }) => {
+const HomePage: React.FC<HomePageProps> = ({ feed, onPost, onSortChange, currentSort, userId }) => {
   return (
-    <>
-      {/* COMPOSER */}
-      <div className="composer">
-        <textarea
+    <div className="content-view">
+      <div className="content-header">
+        <h1>🏔️ Cave Wall</h1>
+        <p className="content-subtitle">All grunts from the land</p>
+      </div>
+
+      {/* Sort controls */}
+      <div className="sort-controls">
+        <span className="sort-label">Sort by:</span>
+        {[
+          { key: 'newest', label: '🕐 Newest' },
+          { key: 'active', label: '💬 Active' },
+          { key: 'hottest', label: '🔥 Hottest' },
+        ].map(opt => (
+          <button
+            key={opt.key}
+            className={`sort-btn ${currentSort === opt.key ? 'active' : ''}`}
+            onClick={() => onSortChange(opt.key)}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Composer */}
+      {userId && (
+        <Composer
+          onSubmit={onPost}
           placeholder="Grunt your thoughts into the cave wall..."
-          value={content}
-          onChange={e => setContent(e.target.value)}
+          cost={2}
+          costLabel="🍖 Food"
         />
-        <div className="composer-actions">
-          <span style={{color:'var(--text-secondary)', fontSize:'0.8rem'}}>-2 🍖 Food Cost</span>
-          <button className="primary" onClick={handlePost}>Carve</button>
-        </div>
-      </div>
+      )}
 
-      {/* FEED */}
+      {/* Feed */}
       <div className="feed">
-        {feed.map(post => {
-          // Heat system
-          const heat = post.fireGenerated;
-          const isHot = heat > 8;
-          const isWarm = heat > 3;
-
-          // Always dark base
-          let bg = "#1c1c1c";
-
-          // Glow strength
-          let glow = "0 10px 30px rgba(0,0,0,0.6)";
-
-          if (isHot) {
-            glow = "0 0 25px rgba(255,122,0,0.9)";
-          } else if (isWarm) {
-            glow = "0 0 15px rgba(255,122,0,0.4)";
-          }
-
-          return (
-            <div
-              key={post.id}
-              className="post"
-              style={{
-                background: bg,
-                boxShadow: glow,
-                animation: isHot ? "fireGlow 2s infinite ease-in-out" : "none",
-                transition: "0.3s"
-              }}
-            >
-              <div className="post-header">
-                <Link to={`/threads/${post.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                  <span>User: {post.creatorId.substring(0,8)}...</span>
-                </Link>
-              <span>🔥 {post.fireGenerated}</span>
-              </div>
-              <div className="post-content">
-                {post.content}
-              </div>
-              <div className="post-actions">
-                <button onClick={() => handleLike(post.id)}>Like (+🍖)</button>
-                <button onClick={() => handleReply(post.id)}>Reply (+🔥)</button>
-                <Link to={`/threads/${post.id}`}>
-                  <button>View</button>
-                </Link>
-              </div>
-            </div>
-          );
-        })}
-        {feed.length === 0 && <div style={{color:'var(--text-secondary)', textAlign:'center'}}>No grunts yet. Be the first to post.</div>}
+        {feed.map(thread => (
+          <ThreadCard key={thread.id} thread={thread} />
+        ))}
+        {feed.length === 0 && (
+          <div className="feed-empty">
+            No grunts yet. Be the first to carve into the wall.
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 };
 

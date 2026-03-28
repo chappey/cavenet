@@ -16,8 +16,17 @@ export const tribes = sqliteTable('tribes', {
   name: text('name').notNull().unique(),
   description: text('description').default(''),
   avatar: text('avatar').default(''),
+  creatorId: text('creator_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
 });
+
+export const userTribes = sqliteTable('user_tribes', {
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tribeId: text('tribe_id').notNull().references(() => tribes.id, { onDelete: 'cascade' }),
+  joinedAt: integer('joined_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.userId, t.tribeId] }),
+}));
 
 export const threads = sqliteTable('threads', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -27,6 +36,7 @@ export const threads = sqliteTable('threads', {
   content: text('content'),
   type: text('type', { enum: ['text', 'image', 'mixed'] }).notNull(),
   imageUrl: text('image_url'),
+  fireGenerated: integer('fire_generated').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
 });
 
@@ -39,6 +49,7 @@ export const replies = sqliteTable('replies', {
   replyIndex: integer('reply_index').notNull(),
   isUnique: integer('is_unique', { mode: 'boolean' }).notNull(),
   fireGenerated: integer('fire_generated').notNull().default(0),
+  likes: integer('likes').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
 });
 
