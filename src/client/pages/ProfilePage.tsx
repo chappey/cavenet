@@ -59,7 +59,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ currentUser }) => {
 
       <h3 style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>Historic Grunts</h3>
       <div className="feed">
-        {user.posts?.map((post: any) => (
+        {user.threads?.map((post: any) => (
           <div key={post.id} className="post">
             <div className="post-header">
               <span>{new Date(post.createdAt).toLocaleString()}</span>
@@ -69,13 +69,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ currentUser }) => {
               {post.content}
             </div>
             <div className="post-actions">
-               <Link to={`/posts/${post.id}`}>
+               <Link to={`/threads/${post.id}`}>
                  <button>View Deep Echoes</button>
                </Link>
             </div>
           </div>
         ))}
-        {user.posts?.length === 0 && <div style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>This caveman has not posted yet.</div>}
+        {user.threads?.length === 0 && <div style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>This caveman has not posted yet.</div>}
       </div>
     </div>
   );

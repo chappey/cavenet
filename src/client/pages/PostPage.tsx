@@ -18,7 +18,7 @@ const PostPage: React.FC<PostPageProps> = ({ handleLike, handleReply }) => {
   const fetchPost = async () => {
     if (!id) return;
     setLoading(true);
-    const { data } = await (api.api.posts as any)({ id }).get();
+    const { data } = await (api.api.threads as any)({ id }).get();
     if (data) setPost(data);
     setLoading(false);
   };
@@ -36,8 +36,8 @@ const PostPage: React.FC<PostPageProps> = ({ handleLike, handleReply }) => {
 
       <div className="post" style={{ border: '1px solid var(--accent-primary)' }}>
         <div className="post-header">
-           <Link to={`/profile/${post.userId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-            <span>User: {post.userId.substring(0,8)}...</span>
+           <Link to={`/profile/${post.creatorId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span>User: {post.creatorId.substring(0,8)}...</span>
           </Link>
           <span>{post.fireGenerated} Fire Gen</span>
         </div>
@@ -55,7 +55,7 @@ const PostPage: React.FC<PostPageProps> = ({ handleLike, handleReply }) => {
         {post.replies?.map((reply: any) => (
           <div key={reply.id} className="post reply" style={{ fontSize: '0.9rem', opacity: 0.8 }}>
              <div className="post-header">
-               <span>User: {reply.userId.substring(0,8)}...</span>
+               <span>User: {reply.creatorId.substring(0,8)}...</span>
                <span>#{reply.replyIndex}</span>
              </div>
              <div className="post-content">

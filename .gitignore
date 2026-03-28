@@ -5,6 +5,10 @@ node_modules/
 # Bun lockfile: keep committed by default (remove if you purposely want to ignore it)
 # bun.lockb
 
+# Don't commit db files (e.g., SQLite databases)
+*.db
+
+
 # Build outputs
 /dist/
 /build/

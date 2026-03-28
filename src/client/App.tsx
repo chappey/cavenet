@@ -39,7 +39,7 @@ function App() {
 
   const handlePost = async () => {
     if (!content.trim()) return;
-    const { error } = await api.api.posts.post({
+    const { error } = await api.api.threads.post({
       type: 'text',
       content: content,
     });
@@ -52,14 +52,14 @@ function App() {
   };
 
   const handleLike = async (id: string) => {
-    await api.api.posts({ id }).like.post();
+    await api.api.replies({ id }).like.post();
     await fetchState();
   };
 
   const handleReply = async (id: string) => {
       const text = prompt("Write a reply:");
      if (!text) return;
-     await api.api.posts({ id }).replies.post({ content: text });
+     await api.api.threads({ id }).replies.post({ content: text });
      await fetchState();
   };
 
@@ -87,7 +87,7 @@ function App() {
             handleReply={handleReply}
           />
         } />
-        <Route path="posts/:id" element={
+        <Route path="threads/:id" element={
           <PostPage
             handleLike={handleLike}
             handleReply={handleReply}

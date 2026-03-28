@@ -3,50 +3,69 @@ import { sqliteTable, text, integer, primaryKey, unique } from 'drizzle-orm/sqli
 export const users = sqliteTable('users', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   username: text('username').notNull().unique(),
+  bio: text('bio').default(''),
+  avatar: text('avatar').default(''),
   food: integer('food').notNull().default(10),
   fire: integer('fire').notNull().default(0),
   lastActiveAt: integer('last_active_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
 });
 
-export const posts = sqliteTable('posts', {
+export const tribes = sqliteTable('tribes', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  type: text('type', { enum: ['text', 'image', 'mixed', 'recovery'] }).notNull(),
+  name: text('name').notNull().unique(),
+  description: text('description').default(''),
+  avatar: text('avatar').default(''),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+});
+
+export const threads = sqliteTable('threads', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  creatorId: text('creator_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tribeId: text('tribe_id').references(() => tribes.id, { onDelete: 'cascade' }),
+  title: text('title'),
   content: text('content'),
+  type: text('type', { enum: ['text', 'image', 'mixed'] }).notNull(),
   imageUrl: text('image_url'),
-  fireGenerated: integer('fire_generated').notNull().default(0),
-  isRecovery: integer('is_recovery', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
 });
 
 export const replies = sqliteTable('replies', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  postId: text('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  threadId: text('thread_id').notNull().references(() => threads.id, { onDelete: 'cascade' }),
+  creatorId: text('creator_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   content: text('content').notNull(),
   contentHash: text('content_hash').notNull().default(''),
   replyIndex: integer('reply_index').notNull(),
   isUnique: integer('is_unique', { mode: 'boolean' }).notNull(),
-  fireAwarded: integer('fire_awarded').notNull().default(0),
+  fireGenerated: integer('fire_generated').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
 });
 
 export const likes = sqliteTable('likes', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  postId: text('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }),
+  replyId: text('reply_id').notNull().references(() => replies.id, { onDelete: 'cascade' }),
+  fireGenerated: integer('fire_generated').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
 }, (t) => ({
-  pk: primaryKey({ columns: [t.userId, t.postId] }),
+  unq: unique().on(t.userId, t.replyId),
 }));
 
-export const threadFire = sqliteTable('thread_fire', {
-  userId: text('user_id').notNull(),
-  postId: text('post_id').notNull(),
-  fireAccumulated: integer('fire_accumulated').notNull().default(0),
+export const userThreadStats = sqliteTable('user_thread_stats', {
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  threadId: text('thread_id').notNull().references(() => threads.id, { onDelete: 'cascade' }),
+  fireGenerated: integer('fire_generated').notNull().default(0),
+  lastReplyIndex: integer('last_reply_index').notNull().default(0),
 }, (t) => ({
-  pk: primaryKey({ columns: [t.userId, t.postId] }),
+  pk: primaryKey({ columns: [t.userId, t.threadId] }),
 }));
+
+export const userActivity = sqliteTable('user_activity', {
+  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  lastActive: integer('last_active', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  decayApplied: integer('decay_applied', { mode: 'boolean' }).notNull().default(false),
+});
 
 export const rewardEvents = sqliteTable('reward_events', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),

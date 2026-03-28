@@ -31,8 +31,8 @@ const HomePage: React.FC<HomePageProps> = ({ feed, content, setContent, handlePo
         {feed.map(post => (
           <div key={post.id} className="post">
             <div className="post-header">
-              <Link to={`/posts/${post.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                <span>User: {post.userId.substring(0,8)}...</span>
+              <Link to={`/threads/${post.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                <span>User: {post.creatorId.substring(0,8)}...</span>
               </Link>
               <span>{post.fireGenerated} Fire Gen</span>
             </div>
@@ -42,7 +42,7 @@ const HomePage: React.FC<HomePageProps> = ({ feed, content, setContent, handlePo
             <div className="post-actions">
               <button onClick={() => handleLike(post.id)}>Like (Converts to Food)</button>
               <button onClick={() => handleReply(post.id)}>Reply (+Fire)</button>
-              <Link to={`/posts/${post.id}`}>
+              <Link to={`/threads/${post.id}`}>
                 <button>View Details</button>
               </Link>
             </div>
