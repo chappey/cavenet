@@ -15,7 +15,7 @@ const HomePage: React.FC<HomePageProps> = ({ feed, content, setContent, handlePo
     <>
       {/* COMPOSER */}
       <div className="composer">
-        <textarea 
+        <textarea
           placeholder="Share your primal thoughts..."
           value={content}
           onChange={e => setContent(e.target.value)}
@@ -48,7 +48,7 @@ const HomePage: React.FC<HomePageProps> = ({ feed, content, setContent, handlePo
             </div>
           </div>
         ))}
-        {feed.length === 0 && <div style={{color:'var(--text-secondary)', textAlign:'center'}}>The chronosphere is empty. Be the first to grunt.</div>}
+        {feed.length === 0 && <div style={{color:'var(--text-secondary)', textAlign:'center'}}>No grunts yet. Be the first to post.</div>}
       </div>
     </>
   );

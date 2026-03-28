@@ -27,13 +27,13 @@ const PostPage: React.FC<PostPageProps> = ({ handleLike, handleReply }) => {
     fetchPost();
   }, [id]);
 
-  if (loading) return <div style={{ color: 'white', padding: '2rem' }}>Decoding Chronos data packets...</div>;
-  if (!post) return <div style={{ color: 'white', padding: '2rem' }}>Neural Signal Lost: Post Not Found</div>;
+  if (loading) return <div style={{ color: 'white', padding: '2rem' }}>Loading post...</div>;
+  if (!post) return <div style={{ color: 'white', padding: '2rem' }}>Post not found</div>;
 
   return (
     <div className="post-details">
       <Link to="/" style={{ color: 'var(--accent-primary)', marginBottom: '1rem', display: 'block' }}>← Back to Feed</Link>
-      
+
       <div className="post" style={{ border: '1px solid var(--accent-primary)' }}>
         <div className="post-header">
            <Link to={`/profile/${post.userId}`} style={{ textDecoration: 'none', color: 'inherit' }}>

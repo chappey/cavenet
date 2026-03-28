@@ -47,7 +47,7 @@ function App() {
       setContent('');
       await fetchState();
     } else {
-      alert(`Simulation Error: ${error.value}`);
+      alert(`Error: ${error.value}`);
     }
   };
 
@@ -57,7 +57,7 @@ function App() {
   };
 
   const handleReply = async (id: string) => {
-     const text = prompt("Enter primitive reply:");
+      const text = prompt("Write a reply:");
      if (!text) return;
      await api.api.posts({ id }).replies.post({ content: text });
      await fetchState();
@@ -65,7 +65,7 @@ function App() {
 
   const attemptRecovery = async () => {
      const { data, error } = await api.api.recovery.post();
-     if (data) alert(`Chronos Admin granted you ${data.reward} food.`);
+      if (data) alert(`The tribe gave you ${data.reward} food.`);
      if (error) alert(`Recovery denied: ${error.value}`);
      await fetchState();
   };
@@ -78,19 +78,19 @@ function App() {
     <Routes>
       <Route element={<Layout user={user} attemptRecovery={attemptRecovery} />}>
         <Route index element={
-          <HomePage 
-            feed={feed} 
-            content={content} 
-            setContent={setContent} 
-            handlePost={handlePost} 
-            handleLike={handleLike} 
-            handleReply={handleReply} 
+          <HomePage
+            feed={feed}
+            content={content}
+            setContent={setContent}
+            handlePost={handlePost}
+            handleLike={handleLike}
+            handleReply={handleReply}
           />
         } />
         <Route path="posts/:id" element={
-          <PostPage 
-            handleLike={handleLike} 
-            handleReply={handleReply} 
+          <PostPage
+            handleLike={handleLike}
+            handleReply={handleReply}
           />
         } />
         <Route path="profile" element={<ProfilePage currentUser={user} />} />

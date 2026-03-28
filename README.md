@@ -1,5 +1,48 @@
-Premise: What if cavemen were given smartphones? If they had access to only one app, what would it look like?
+# Cavenet
 
-Idea: One “everything app” that is owned by Chronos Dominion, a time-traveling mega-corporation hellbent on monetizing the lives of homo sapiens throughout time and space to maximize profit.
+Cavenet is a playful social feed app set in a caveman timeline, powered by a React client and a Bun + Elysia API.
 
-The Chronos Dominion is on a civilizing mission: to bring the light of progress to the dark corners of history. 
+## Quick Start
+
+1. Install dependencies:
+
+```bash
+bun install
+```
+
+2. Run the app (server + client):
+
+```bash
+bun run dev
+```
+
+3. Open:
+
+`http://localhost:3000`
+
+## Useful Scripts
+
+- `bun run dev`: Run server and client together
+- `bun run dev:server`: Run API only on port `3001`
+- `bun run dev:client`: Run Vite client only on port `3000`
+- `bun run db:push`: Push Drizzle schema to SQLite
+- `bun run build`: Production build + TypeScript check
+- `bun test`: Run tests
+
+## Stack
+
+- Client: React + Vite + React Router
+- Server: Bun + Elysia
+- Database: SQLite + Drizzle ORM
+
+## Project Structure
+
+- `src/client`: Frontend app
+- `src/server`: API and DB access
+- `src/server/db/schema.ts`: Database schema
+- `drizzle.config.ts`: Drizzle config
+
+## Notes
+
+- Client runs on `3000`, API runs on `3001`.
+- Vite proxies `/api` requests to the API server.

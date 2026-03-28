@@ -15,7 +15,7 @@ const Layout: React.FC<LayoutProps> = ({ user, attemptRecovery }) => {
           <Link to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
             <h1>CaveFeed</h1>
           </Link>
-          <span>Chronos Dominion Inc.</span>
+          <span>Tribe Message Board</span>
         </div>
         <div className="stats">
           <Link to="/profile" className="stat" style={{ textDecoration: 'none', color: 'inherit' }}>

@@ -35,15 +35,15 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ currentUser }) => {
     fetchUser();
   }, [id, currentUser]);
 
-  if (loading) return <div style={{ color: 'white', padding: '2rem' }}>Scanning Neural Profile...</div>;
-  if (!user) return <div style={{ color: 'white', padding: '2rem' }}>Neural Signal Lost: User Not Found</div>;
+  if (loading) return <div style={{ color: 'white', padding: '2rem' }}>Loading profile...</div>;
+  if (!user) return <div style={{ color: 'white', padding: '2rem' }}>User not found</div>;
 
   return (
     <div className="profile">
       <div className="header-glass" style={{ marginBottom: '2rem' }}>
         <div className="brand">
           <h1>{user.username} Profile</h1>
-          <span>Chronos Citizen ID: {user.id.substring(0, 12)}...</span>
+          <span>Tribe ID: {user.id.substring(0, 12)}...</span>
         </div>
         <div className="stats" style={{ gap: '2rem' }}>
           <div className="stat">
@@ -75,7 +75,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ currentUser }) => {
             </div>
           </div>
         ))}
-        {user.posts?.length === 0 && <div style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>No neural broadcasts from this citizen.</div>}
+        {user.posts?.length === 0 && <div style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>This caveman has not posted yet.</div>}
       </div>
     </div>
   );
