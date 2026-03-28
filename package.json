@@ -1,0 +1,30 @@
+{
+  "name": "cavenet",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev:server": "API_PORT=3001 bun --hot src/server/index.ts",
+    "dev:client": "bunx --bun vite --port 3000 --strictPort",
+    "dev": "bun run dev:server & bun run dev:client",
+    "db:push": "bunx drizzle-kit push",
+    "build": "bun vite build && tsc",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@elysiajs/eden": "^1.1.2",
+    "drizzle-orm": "^0.31.2",
+    "elysia": "^1.1.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.13.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.6",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "drizzle-kit": "^0.22.8",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.1"
+  }
+}
