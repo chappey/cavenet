@@ -26,6 +26,8 @@ bun run dev
 - `bun run dev:server`: Run API only on port `3001`
 - `bun run dev:client`: Run Vite client only on port `3000`
 - `bun run db:push`: Push Drizzle schema to SQLite
+- `bun run db:seed`: Create schema (if needed) and seed sample data
+- `bun run db:reset`: Delete and regenerate `src/server/sqlite.db` with seed data
 - `bun run build`: Production build + TypeScript check
 - `bun test`: Run tests
 

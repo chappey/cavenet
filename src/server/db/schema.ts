@@ -25,6 +25,7 @@ export const replies = sqliteTable('replies', {
   postId: text('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   content: text('content').notNull(),
+  contentHash: text('content_hash').notNull().default(''),
   replyIndex: integer('reply_index').notNull(),
   isUnique: integer('is_unique', { mode: 'boolean' }).notNull(),
   fireAwarded: integer('fire_awarded').notNull().default(0),

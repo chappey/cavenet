@@ -7,6 +7,8 @@
     "dev:client": "bunx --bun vite --port 3000 --strictPort",
     "dev": "bun run dev:server & bun run dev:client",
     "db:push": "bunx drizzle-kit push",
+    "db:seed": "bun run src/server/db/seed.ts",
+    "db:reset": "bun run src/server/db/seed.ts --reset",
     "build": "bun vite build && tsc",
     "test": "bun test"
   },
