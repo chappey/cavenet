@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary-fixed-dim": "#ffb690",
+              "secondary-fixed-dim": "#cec5bf",
+              "error-container": "#ffdad6",
+              "secondary-fixed": "#eae1da",
+              "surface-tint": "#9d4300",
+              "surface-container-low": "#f5f3f2",
+              "outline-variant": "#e0c0b1",
+              "on-primary": "#ffffff",
+              "on-error-container": "#93000a",
+              "secondary": "#645d58",
+              "surface": "#fbf9f8",
+              "on-surface": "#1b1c1b",
+              "error": "#ba1a1a",
+              "on-error": "#ffffff",
+              "surface-dim": "#dbdad9",
+              "inverse-primary": "#ffb690",
+              "inverse-on-surface": "#f2f0ef",
+              "surface-bright": "#fbf9f8",
+              "primary-fixed": "#ffdbca",
+              "on-tertiary": "#ffffff",
+              "surface-container-highest": "#e4e2e1",
+              "on-tertiary-container": "#35312f",
+              "outline": "#8c7164",
+              "secondary-container": "#eae1da",
+              "tertiary-fixed": "#e8e1dd",
+              "on-background": "#1b1c1b",
+              "primary-container": "#f97316",
+              "on-surface-variant": "#584237",
+              "on-tertiary-fixed": "#1e1b19",
+              "on-secondary-fixed-variant": "#4b4641",
+              "on-primary-fixed": "#341100",
+              "tertiary-fixed-dim": "#ccc5c1",
+              "on-primary-container": "#582200",
+              "surface-container-high": "#eae8e7",
+              "tertiary-container": "#9f9995",
+              "background": "#fbf9f8",
+              "surface-container": "#efedec",
+              "on-primary-fixed-variant": "#783200",
+              "on-secondary-fixed": "#1f1b17",
+              "on-secondary": "#ffffff",
+              "on-secondary-container": "#6a635e",
+              "inverse-surface": "#303030",
+              "tertiary": "#625d5a",
+              "surface-variant": "#e4e2e1",
+              "primary": "#9d4300",
+              "on-tertiary-fixed-variant": "#4a4643",
+              "surface-container-lowest": "#ffffff"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Space Grotesk"],
+              "label": ["Space Grotesk"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .slab-shadow {
+            box-shadow: 4px 4px 0px 0px rgba(27,28,27,1);
+        }
+        .active-slab-shadow {
+            box-shadow: 2px 2px 0px 0px rgba(27,28,27,1);
+            transform: translate(2px, 2px);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface font-body text-on-surface selection:bg-primary-container selection:text-white pb-32">
+<!-- TopAppBar -->
+<header class="sticky top-0 z-50 bg-[#fbf9f8] dark:bg-stone-950 border-b-2 border-[#8c7164] dark:border-stone-800 flex items-center justify-center w-full px-6 h-16">
+<h1 class="font-['Space_Grotesk'] font-bold tracking-tighter uppercase text-2xl font-black text-[#1b1c1b] dark:text-stone-100 tracking-[-0.02em]">CAVENET</h1>
+</header>
+<main class="max-w-xl mx-auto px-4 mt-8 space-y-8">
+<!-- Primitive Greeting -->
+<section class="mb-10">
+<h2 class="text-display-lg font-headline font-bold text-4xl tracking-tighter leading-none mb-2">SUN RISE. <br/>HUNT BEGIN.</h2>
+<p class="text-label-md font-bold text-outline uppercase tracking-widest">Tribe Status: Hungry</p>
+</section>
+<!-- Post Card: Grog -->
+<article class="bg-surface-container rounded-3xl border-2 border-stone-400 p-6 slab-shadow transition-all active:translate-y-1 active:shadow-none">
+<div class="flex items-center gap-4 mb-6">
+<div class="w-14 h-14 rounded-full bg-surface-container-highest border-2 border-stone-400 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="gritty close-up portrait of a rugged prehistoric man with wild hair and fur clothing in a dark cave setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAb3TLn424peS7KOnsvA2qu384HRzxEScKZW1RNCXK74RZ1Y5VEm0vw18O5JqgHOr9PEvP6jjntvIHwcs3PQMm0CZ9innkzVbLxAc1UaAtARrkgdAkDFv_N3vBh-x1vU72aSS0UGjcJZ8wNrgkDEnwp2UbkU7L-8AaDlDSyV2Mx7o6r80nLIO4fTq0r_jOTDDheHUDJdpHKqu8QRE4YPFm1Y4gFDCpfzvrVvlUn8_Ii92VFymX1fFLMi2e36jjDoW1874BeNRurdmE"/>
+</div>
+<div>
+<h3 class="font-bold text-lg leading-tight">Grog (Mammoth-Slayers)</h3>
+<p class="text-xs font-bold text-outline uppercase">2 Moons Ago</p>
+</div>
+</div>
+<p class="text-xl font-medium leading-relaxed mb-8">ME HUNGRY. WHO HAVE BERRY? ME EXCHANGE FOR SHARP ROCK.</p>
+<div class="flex gap-4">
+<!-- Action: COOK -->
+<button class="flex items-center gap-2 bg-surface-container-high border-2 border-stone-400 rounded-3xl px-4 py-2 hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-primary-container" data-icon="restaurant">restaurant</span>
+<span class="font-bold text-sm">12 COOK</span>
+</button>
+<!-- Action: SPARK -->
+<button class="flex items-center gap-2 bg-surface-container-high border-2 border-stone-400 rounded-3xl px-4 py-2 hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-primary-container" data-icon="local_fire_department" style="font-variation-settings: 'FILL' 1;">local_fire_department</span>
+<span class="font-bold text-sm">4 SPARK</span>
+</button>
+</div>
+</article>
+<!-- Post Card: Ooga -->
+<article class="bg-surface-container rounded-3xl border-2 border-stone-400 p-6 slab-shadow transition-all active:translate-y-1 active:shadow-none">
+<div class="flex items-center gap-4 mb-6">
+<div class="w-14 h-14 rounded-full bg-surface-container-highest border-2 border-stone-400 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="weathered face of an ancient tribal elder with braided hair and bone ornaments in dim torchlight" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCkgwu_U0WGEE5m6b9f_drRlpbexnlKUGQyqwgddaMo3r3xyYbjKopJCjCb1gMVhyoCxmdvoPYJqq_9HAV-5U7SWObaozM_QRwjPnwXtY9Rwn8Kbd7sMdTkMhiTVR1O2xpAWz4D14Cb4yqSRg6yXaJVJPZUwiLYYEfWKZgGKPvePjhAANmBuGW40D8jWsdS-20i4s9K1aekwyzdslxkDmjnijrbEEQK70xZsT9lEn5KxA5_4UNgDFETLPJUcO9ApP1g-t1JBY93Nfk"/>
+</div>
+<div>
+<h3 class="font-bold text-lg leading-tight">Ooga (Fire-Keepers)</h3>
+<p class="text-xs font-bold text-outline uppercase">3 Moons Ago</p>
+</div>
+</div>
+<p class="text-xl font-medium leading-relaxed mb-4">BIG CAT NEAR RIVER. DO NOT GO ALONE. TAKE POINTY STICK.</p>
+<div class="w-full h-48 rounded-3xl border-2 border-stone-400 mb-6 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="cinematic wide shot of a deep prehistoric river canyon with jagged stone walls and misty morning atmosphere" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB24TPEitW1d3U63GzzWgGWSYTscKbeIz0bXr3jGIksFoLlvGRWj-vk0RMxTdUMJgT2xxz980ZJzEx3A-xZTxd1nJQAQ7is0o1K1cp6MwrIGdzaXmDvdRtEo1vVGAWV34Oa1XlweCQDUAQxtxNKUmLWd3DjoS5YIF4XKLJrSrGlQwKD2t86ufVPqGxYARQ2UrqCnPt3vWNbJk795nKfgS3ydR8wGs8BU8UvCRfNcmsu2RrzVBc8Lu04wHzBQitdd0Bk00Ll6BWpHig"/>
+</div>
+<div class="flex gap-4">
+<button class="flex items-center gap-2 bg-surface-container-high border-2 border-stone-400 rounded-3xl px-4 py-2">
+<span class="material-symbols-outlined text-primary-container" data-icon="restaurant">restaurant</span>
+<span class="font-bold text-sm">28 COOK</span>
+</button>
+<button class="flex items-center gap-2 bg-surface-container-high border-2 border-stone-400 rounded-3xl px-4 py-2">
+<span class="material-symbols-outlined text-primary-container" data-icon="local_fire_department" style="font-variation-settings: 'FILL' 1;">local_fire_department</span>
+<span class="font-bold text-sm">56 SPARK</span>
+</button>
+</div>
+</article>
+<!-- Post Card: Thag -->
+<article class="bg-surface-container rounded-3xl border-2 border-stone-400 p-6 slab-shadow transition-all active:translate-y-1 active:shadow-none">
+<div class="flex items-center gap-4 mb-6">
+<div class="w-14 h-14 rounded-full bg-surface-container-highest border-2 border-stone-400 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="rough portrait of a cave painter with charcoal stained hands and primitive leather tunic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDzumYVMIJ7vjxL2RDRKC2N9gMmanFbdSJw7DxQEi9-vi0iyruuQLuwEI--CVcaL12Hplm3v8TAhml9x78cmYYitNZelmZhjXzhhHGxF90if18KOaYZrKo3J5lPSX1d2ySGD6EyMfXz7Hr_H5wnHCQHudjI3BCt2yvYMgrY8XDHxpzW9LHcaQWx8elKl3EafsRn0cNlD_77wKD68aoGmOm7CA5vHehVjr9-dNlNvYavDFquztLhCjOEBofuanDN_f-m0zWYvHU4TSc"/>
+</div>
+<div>
+<h3 class="font-bold text-lg leading-tight">Thag (Cave-Painters)</h3>
+<p class="text-xs font-bold text-outline uppercase">Sun High</p>
+</div>
+</div>
+<p class="text-xl font-medium leading-relaxed mb-8">FOUND NEW RED CLAY. WALL LOOK PRETTY NOW. COME SEE AT BIG CAVE.</p>
+<div class="flex gap-4">
+<button class="flex items-center gap-2 bg-surface-container-high border-2 border-stone-400 rounded-3xl px-4 py-2">
+<span class="material-symbols-outlined text-primary-container" data-icon="restaurant">restaurant</span>
+<span class="font-bold text-sm">3 COOK</span>
+</button>
+<button class="flex items-center gap-2 bg-surface-container-high border-2 border-stone-400 rounded-3xl px-4 py-2">
+<span class="material-symbols-outlined text-primary-container" data-icon="local_fire_department" style="font-variation-settings: 'FILL' 1;">local_fire_department</span>
+<span class="font-bold text-sm">112 SPARK</span>
+</button>
+</div>
+</article>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-2 bg-[#fbf9f8] dark:bg-stone-950 border-t-2 border-[#8c7164] dark:border-stone-800 rounded-t-[24px]">
+<!-- Feed (Active) -->
+<a class="flex flex-col items-center justify-center bg-[#f97316] text-white rounded-[24px] p-3 shadow-[4px_4px_0px_0px_rgba(27,28,27,1)] active:translate-y-1 active:shadow-none transition-transform" href="#">
+<span class="material-symbols-outlined text-2xl" data-icon="local_fire_department" style="font-variation-settings: 'FILL' 1;">local_fire_department</span>
+</a>
+<!-- Tribe -->
+<a class="flex flex-col items-center justify-center text-[#1b1c1b] dark:text-stone-400 p-3 hover:bg-[#efedec] dark:hover:bg-stone-900 rounded-[24px] transition-colors" href="#">
+<span class="material-symbols-outlined text-2xl" data-icon="groups">groups</span>
+</a>
+<!-- Post -->
+<a class="flex flex-col items-center justify-center text-[#1b1c1b] dark:text-stone-400 p-3 hover:bg-[#efedec] dark:hover:bg-stone-900 rounded-[24px] transition-colors" href="#">
+<span class="material-symbols-outlined text-2xl" data-icon="add_box">add_box</span>
+</a>
+<!-- Profile -->
+<a class="flex flex-col items-center justify-center text-[#1b1c1b] dark:text-stone-400 p-3 hover:bg-[#efedec] dark:hover:bg-stone-900 rounded-[24px] transition-colors" href="#">
+<span class="material-symbols-outlined text-2xl" data-icon="person">person</span>
+</a>
+</nav>
+</body></html>
