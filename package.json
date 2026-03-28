@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev:server": "API_PORT=3001 bun --hot src/server/index.ts",
+    "dev:server": "bun --hot src/server/index.ts",
     "dev:client": "bunx --bun vite --port 3000 --strictPort",
-    "dev": "bun run dev:server & bun run dev:client",
+    "dev": "bun --parallel run dev:server dev:client",
     "db:push": "bunx drizzle-kit push",
     "db:seed": "bun run src/server/db/seed.ts",
     "db:reset": "bun run src/server/db/seed.ts --reset",
