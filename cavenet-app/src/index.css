@@ -1,0 +1,29 @@
+/* ========================= */
+/* GLOBAL BODY STYLING */
+/* ========================= */
+body {
+  margin: 0;
+  color: white;
+  font-family: 'Segoe UI', sans-serif;
+
+  /* Cave-like background */
+  background:
+    radial-gradient(circle at 20% 20%, #1f1f1f, transparent),
+    radial-gradient(circle at 80% 80%, #111, transparent),
+    #0a0a0a;
+}
+
+/* ========================= */
+/* FIRE GLOW ANIMATION */
+/* ========================= */
+@keyframes fireGlow {
+  0% {
+    box-shadow: 0 0 10px rgba(255, 100, 0, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(255, 140, 0, 0.9);
+  }
+  100% {
+    box-shadow: 0 0 10px rgba(255, 80, 0, 0.4);
+  }
+}
