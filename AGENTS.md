@@ -34,6 +34,12 @@ Ship small, correct changes quickly while keeping the project easy to understand
 - SQLite DB file: `src/server/sqlite.db`
 - Vite proxy: `/api -> http://localhost:3001`
 
+## Client Tech Details
+
+- **Tailwind CSS v4**: Use `@import "tailwindcss";` in `src/client/index.css`.
+- **ESM Project**: For Root configuration files (like PostCSS and Tailwind), use the `.cjs` extension (e.g., `postcss.config.cjs`).
+- **Absolute Imports**: Support for absolute imports using the `src/` prefix (configured in `tsconfig.json`).
+
 ## Working Rules
 
 1. Read relevant files before editing.
