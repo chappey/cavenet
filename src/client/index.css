@@ -614,6 +614,10 @@
   font-size: 0.85rem;
   font-weight: 600;
 }
+.stat-engagement {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
 
 .avatar-initial {
   width: 24px; height: 24px;
@@ -743,6 +747,10 @@
   color: var(--color-cave-200);
   padding-top: 0.75rem;
   border-top: 1px solid var(--color-cave-500);
+}
+
+.thread-op-stats span:last-child {
+  font-size: 0.95rem;
 }
 
 .thread-replies-header {

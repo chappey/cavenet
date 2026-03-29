@@ -31,8 +31,6 @@ const normalizeReply = (value: string) => value.trim().toLowerCase().replace(/\s
 
 const contentHash = (value: string) => createHash('sha256').update(normalizeReply(value)).digest('hex');
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 const toDayKey = (value: Date | string | number) => new Date(value).toISOString().slice(0, 10);
@@ -90,7 +88,270 @@ const getLikeFireCap = (qualityScore: number, availableUsers: number) => {
   return Math.min(cap, Math.max(0, availableUsers - 1));
 };
 
-const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
+const getOrganicLikeBudget = (qualityScore: number, availableNpcCount: number) => {
+  if (qualityScore < 25) return 0;
+  const base = qualityScore < 45 ? 1 : qualityScore < 70 ? 2 : qualityScore < 85 ? 4 : 6;
+  return Math.min(base, Math.max(0, availableNpcCount));
+};
+
+type EngagementStatus = 'idle' | 'queued' | 'active' | 'complete' | 'inactive';
+
+type EngagementSnapshot = {
+  status: EngagementStatus;
+  plannedReplies: number;
+  completedReplies: number;
+  plannedLikes: number;
+  completedLikes: number;
+  updatedAt: number;
+};
+
+const makeInactiveEngagementSnapshot = (): EngagementSnapshot => ({
+  status: 'inactive',
+  plannedReplies: 0,
+  completedReplies: 0,
+  plannedLikes: 0,
+  completedLikes: 0,
+  updatedAt: Date.now(),
+});
+
+const threadEngagementState = new Map<string, EngagementSnapshot>();
+
+const threadTimers = new Map<string, Set<ReturnType<typeof setTimeout>>>();
+
+const getThreadEngagementSnapshot = (threadId: string) => threadEngagementState.get(threadId) ?? makeInactiveEngagementSnapshot();
+
+const setThreadEngagementSnapshot = (threadId: string, patch: Partial<EngagementSnapshot>) => {
+  const next = {
+    ...getThreadEngagementSnapshot(threadId),
+    ...patch,
+    updatedAt: Date.now(),
+  } satisfies EngagementSnapshot;
+  threadEngagementState.set(threadId, next);
+  return next;
+};
+
+const trackThreadTimer = (threadId: string, delay: number, task: () => Promise<void>) => {
+  const timer = setTimeout(() => {
+    const timerSet = threadTimers.get(threadId);
+    timerSet?.delete(timer);
+    void task();
+  }, delay);
+
+  const timerSet = threadTimers.get(threadId) ?? new Set<ReturnType<typeof setTimeout>>();
+  timerSet.add(timer);
+  threadTimers.set(threadId, timerSet);
+};
+
+const maybeFinalizeThreadEngagement = (threadId: string) => {
+  const snapshot = getThreadEngagementSnapshot(threadId);
+  const doneReplies = snapshot.completedReplies >= snapshot.plannedReplies;
+  const doneLikes = snapshot.completedLikes >= snapshot.plannedLikes;
+
+  if (snapshot.plannedReplies === 0 && snapshot.plannedLikes === 0) {
+    setThreadEngagementSnapshot(threadId, { status: 'inactive' });
+    return;
+  }
+
+  if (doneReplies && doneLikes) {
+    setThreadEngagementSnapshot(threadId, { status: 'complete' });
+  }
+};
+
+const buildFallbackReplies = (
+  thread: typeof threads.$inferSelect,
+  profiles: Array<{ username: string; bio: string }>,
+  qualityScore: number,
+) => {
+  const replyTarget = getReplyTargetFromQuality(qualityScore, profiles.length);
+  if (replyTarget <= 0) return [] as Array<{ username: string; content: string }>;
+
+  const openers = [
+    'OOG this hit hard.',
+    'Fire brain like this.',
+    'Cave people agree.',
+    'Rock solid post.',
+    'Much noise. Much good.',
+  ];
+  const reactions = [
+    'Me want more of this.',
+    'Big spear energy.',
+    'This make cave warm.',
+    'Strong think, good think.',
+    'Mammoth-sized yes.',
+  ];
+
+  return profiles.slice(0, replyTarget).map((profile, index) => ({
+    username: profile.username,
+    content: `${openers[index % openers.length]} ${reactions[index % reactions.length]}${thread.title ? ` About ${thread.title.toLowerCase()}.` : '.'}`,
+  }));
+};
+
+const applyAutomatedLike = async (
+  tx: typeof db,
+  { replyId, userId, awardLikerBonus }: { replyId: string; userId: string; awardLikerBonus: boolean }
+) => {
+  const inserted = await tx.insert(likes)
+    .values({ userId, replyId, fireGenerated: 0 })
+    .onConflictDoNothing()
+    .returning();
+
+  if (inserted.length === 0) {
+    return { status: 'already_liked' as const, awardedFire: 0 };
+  }
+
+  const replyRow = await tx.query.replies.findFirst({ where: eq(replies.id, replyId) });
+  if (!replyRow) throw new Error('Reply not found');
+  const threadRow = await tx.query.threads.findFirst({ where: eq(threads.id, replyRow.threadId) });
+  const qualityScore = scoreThreadQuality(threadRow?.title ?? null, threadRow?.content ?? '');
+  const userCountRows = await tx.select({ count: sql<number>`COUNT(*)` }).from(users);
+  const userCount = userCountRows[0]?.count ?? 0;
+
+  await tx.update(replies)
+    .set({ likes: sql`${replies.likes} + 1` })
+    .where(eq(replies.id, replyId));
+
+  let awardedFire = 0;
+  const currentLikes = replyRow.likes ?? 0;
+  const likeFireCap = getLikeFireCap(qualityScore, userCount);
+  if (currentLikes < likeFireCap) {
+    awardedFire = 1;
+    await tx.update(users)
+      .set({ fire: sql`${users.fire} + 1` })
+      .where(eq(users.id, replyRow.creatorId));
+  }
+
+  if (awardLikerBonus) {
+    const liker = await tx.query.users.findFirst({ where: eq(users.id, userId) });
+    if (liker && liker.fire > 0) {
+      const roll = Math.random() < 0.5 ? 2 : 3;
+      const cost = Math.min(roll, liker.fire);
+      await tx.update(users)
+        .set({
+          fire: sql`MAX(${users.fire} - ${cost}, 0)`,
+          food: sql`${users.food} + 1`,
+        })
+        .where(eq(users.id, userId));
+    }
+  }
+
+  return { status: 'liked' as const, awardedFire };
+};
+
+const queueThreadEngagement = async (thread: typeof threads.$inferSelect, creatorUsername: string, qualityScore: number) => {
+  const npcProfiles = (await db.select({
+    id: users.id,
+    username: users.username,
+    bio: users.bio,
+    isPlayerCharacter: users.isPlayerCharacter,
+  })
+    .from(users)
+    .orderBy(users.username))
+    .filter((user) => user.id !== thread.creatorId && !user.isPlayerCharacter)
+    .slice(0, 5)
+    .map((user) => ({ id: user.id, username: user.username, bio: user.bio ?? '' }));
+
+  const plannedReplies = getReplyTargetFromQuality(qualityScore, npcProfiles.length);
+  const plannedLikes = getOrganicLikeBudget(qualityScore, npcProfiles.length * 2);
+
+  if (plannedReplies <= 0 && plannedLikes <= 0) {
+    setThreadEngagementSnapshot(thread.id, { status: 'inactive' });
+    return;
+  }
+
+  setThreadEngagementSnapshot(thread.id, {
+    status: 'queued',
+    plannedReplies,
+    completedReplies: 0,
+    plannedLikes,
+    completedLikes: 0,
+  });
+
+  const queuedReplies = await (async () => {
+    try {
+      const batch = await generateThreadAiReplies(thread, creatorUsername, qualityScore);
+      if (batch?.generatedReplies?.length) {
+        return { replies: batch.generatedReplies, profiles: batch.profiles ?? npcProfiles };
+      }
+    } catch (error) {
+      console.error('[ai-thread-replies] generation failed, using fallback:', error);
+    }
+
+    return { replies: buildFallbackReplies(thread, npcProfiles, qualityScore), profiles: npcProfiles };
+  })();
+
+  const repliesToSchedule = queuedReplies.replies.slice(0, plannedReplies);
+  if (repliesToSchedule.length === 0) {
+    setThreadEngagementSnapshot(thread.id, { status: 'inactive' });
+    return;
+  }
+
+  let pendingLikeBudget = plannedLikes;
+
+  repliesToSchedule.forEach((aiReply, index) => {
+    const replyDelay = 900 + (index * 1400) + Math.floor(Math.random() * 1300);
+    trackThreadTimer(thread.id, replyDelay, async () => {
+      setThreadEngagementSnapshot(thread.id, { status: 'active' });
+
+      try {
+        await db.transaction(async (tx) => {
+          const profile = await tx.query.users.findFirst({ where: eq(users.username, aiReply.username) });
+          if (!profile) return;
+
+          const reply = await insertThreadReply(tx, {
+            threadId: thread.id,
+            creatorId: profile.id,
+            content: aiReply.content,
+            isUniqueOverride: true,
+          });
+
+          const rewards = await applyReplyRewards(tx, {
+            reply,
+            thread: { id: thread.id, creatorId: thread.creatorId },
+            qualityScore,
+          });
+
+          await tx.update(replies)
+            .set({ fireGenerated: rewards.fireAwardedToReplier })
+            .where(eq(replies.id, reply.id));
+
+          const likesForThisReply = Math.max(0, Math.min(pendingLikeBudget, Math.random() < 0.35 ? 2 : Math.random() < 0.7 ? 1 : 0));
+          pendingLikeBudget -= likesForThisReply;
+
+          const likers = pickLikeLikers(queuedReplies.profiles, likesForThisReply, [profile.username]);
+          likers.forEach((liker, likeIndex) => {
+            const likeDelay = 2500 + (likeIndex * 1100) + Math.floor(Math.random() * 2000);
+            trackThreadTimer(thread.id, likeDelay, async () => {
+              await db.transaction(async (likeTx) => {
+                await applyAutomatedLike(likeTx, {
+                  replyId: reply.id,
+                  userId: liker.id,
+                  awardLikerBonus: false,
+                });
+              });
+
+              const snapshot = getThreadEngagementSnapshot(thread.id);
+              setThreadEngagementSnapshot(thread.id, { completedLikes: snapshot.completedLikes + 1, status: 'active' });
+              maybeFinalizeThreadEngagement(thread.id);
+            });
+          });
+        });
+
+        const snapshot = getThreadEngagementSnapshot(thread.id);
+        setThreadEngagementSnapshot(thread.id, { completedReplies: snapshot.completedReplies + 1, status: 'active' });
+        maybeFinalizeThreadEngagement(thread.id);
+      } catch (error) {
+        console.error('[thread-engagement] reply job failed:', error);
+      }
+    });
+  });
+};
+
+const pickLikeLikers = (profiles: Array<{ id: string; username: string }>, likeCount: number, skipUsernames: string[] = []) => {
+  if (likeCount <= 0 || profiles.length === 0) return [] as Array<{ id: string; username: string }>;
+
+  const pool = shuffle(profiles.filter(profile => !skipUsernames.includes(profile.username)));
+  return pool.slice(0, Math.min(likeCount, pool.length));
+};
 
 const shuffle = <T,>(items: T[]) => {
   const copy = [...items];
@@ -197,12 +458,12 @@ const generateThreadAiReplies = async (thread: typeof threads.$inferSelect, crea
     .orderBy(users.username))
     .filter((user) => user.id !== thread.creatorId && !user.isPlayerCharacter)
     .slice(0, 5)
-    .map((user) => ({ username: user.username, bio: user.bio ?? '' }));
+    .map((user) => ({ id: user.id, username: user.username, bio: user.bio ?? '' }));
 
   const replyTarget = getReplyTargetFromQuality(qualityScore, npcProfiles.length);
   if (replyTarget <= 0) return null;
 
-	const aiProfiles = shuffle(npcProfiles).slice(0, replyTarget);
+  const aiProfiles = shuffle(npcProfiles).slice(0, replyTarget);
 
 	const mood = pickReplyMood(qualityScore);
 
@@ -211,12 +472,12 @@ const generateThreadAiReplies = async (thread: typeof threads.$inferSelect, crea
     threadContent: thread.content,
     threadType: thread.type,
     creatorUsername,
-    profiles: aiProfiles,
+    profiles: aiProfiles.map(({ username, bio }) => ({ username, bio })),
 		mood,
 		qualityScore,
   });
 
-  return { generatedReplies, mood, qualityScore };
+  return { generatedReplies, mood, qualityScore, profiles: aiProfiles };
 };
 
 const getThreadAllowance = async (tx: typeof db, userId: string, threadId: string) => {
@@ -359,6 +620,7 @@ const enrichThreads = async (threadRows: any[]) => {
     recentReplies: replyMap[t.id] ?? [],
     tribeName: t.tribeId ? tribeMap[t.tribeId]?.name ?? null : null,
     tribeAbbreviation: t.tribeId ? tribeMap[t.tribeId]?.abbreviation ?? null : null,
+    engagement: getThreadEngagementSnapshot(t.id),
   }));
 };
 
@@ -649,44 +911,7 @@ const app = new Elysia()
       const creator = await db.query.users.findFirst({ where: eq(users.id, userId) });
       const creatorUsername = creator?.username ?? 'Unknown';
       const qualityScore = scoreThreadQuality(thread.title ?? null, thread.content ?? '');
-
-      void (async () => {
-        try {
-          const aiReplyBatch = await generateThreadAiReplies(thread, creatorUsername, qualityScore);
-          if (!aiReplyBatch || aiReplyBatch.generatedReplies.length === 0) return;
-
-          const { generatedReplies } = aiReplyBatch;
-
-          for (const [index, aiReply] of generatedReplies.entries()) {
-            const delay = 650 + (index * 900) + Math.floor(Math.random() * 600);
-            await sleep(delay);
-
-            await db.transaction(async (tx) => {
-              const profile = await tx.query.users.findFirst({ where: eq(users.username, aiReply.username) });
-              if (!profile) return;
-
-              const reply = await insertThreadReply(tx, {
-                threadId: thread.id,
-                creatorId: profile.id,
-                content: aiReply.content,
-                isUniqueOverride: true,
-              });
-
-              const rewards = await applyReplyRewards(tx, {
-                reply,
-                thread: { id: thread.id, creatorId: thread.creatorId },
-                qualityScore,
-              });
-
-              await tx.update(replies)
-                .set({ fireGenerated: rewards.fireAwardedToReplier })
-                .where(eq(replies.id, reply.id));
-            });
-          }
-        } catch (error) {
-          console.error('[ai-thread-replies] generation failed:', error);
-        }
-      })();
+      void queueThreadEngagement(thread, creatorUsername, qualityScore);
 
       return thread;
     }, {
@@ -739,6 +964,7 @@ const app = new Elysia()
         replyCount: statRows[0]?.replyCount ?? 0,
         uniquePosters: statRows[0]?.uniquePosters ?? 0,
         replies: threadReplies,
+        engagement: getThreadEngagementSnapshot(thread.id),
       };
     })
 
@@ -792,53 +1018,9 @@ const app = new Elysia()
       const replyId = params.id;
 
       const outcome = await db.transaction(async (tx) => {
-        const inserted = await tx.insert(likes)
-          .values({ userId, replyId, fireGenerated: 0 })
-          .onConflictDoNothing()
-          .returning();
-
-        if (inserted.length === 0) {
-          return { status: 'already_liked' as const };
-        }
-
-        const replyRow = await tx.query.replies.findFirst({ where: eq(replies.id, replyId) });
-        if (!replyRow) throw new Error('Reply not found');
-        const threadRow = await tx.query.threads.findFirst({ where: eq(threads.id, replyRow.threadId) });
-        const qualityScore = scoreThreadQuality(threadRow?.title ?? null, threadRow?.content ?? '');
-        const userCountRows = await tx.select({ count: sql<number>`COUNT(*)` }).from(users);
-        const userCount = userCountRows[0]?.count ?? 0;
-
-        // Update like count on reply
-        await tx.update(replies)
-          .set({ likes: sql`${replies.likes} + 1` })
-          .where(eq(replies.id, replyId));
-
-        // Award fire to reply creator (capped by post quality and population)
-        let awardedFire = 0;
-        const currentLikes = replyRow.likes ?? 0;
-        const likeFireCap = getLikeFireCap(qualityScore, userCount);
-        if (currentLikes < likeFireCap) {
-          awardedFire = 1;
-          await tx.update(users)
-            .set({ fire: sql`${users.fire} + 1` })
-            .where(eq(users.id, replyRow.creatorId));
-        }
-
-        // Like conversion: spend available fire to gain +1 food (prefer 2..3 when possible)
-        const liker = await tx.query.users.findFirst({ where: eq(users.id, userId) });
-        if (liker && liker.fire > 0) {
-          const roll = Math.random() < 0.5 ? 2 : 3;
-          const cost = Math.min(roll, liker.fire);
-          await tx.update(users)
-            .set({
-              fire: sql`MAX(${users.fire} - ${cost}, 0)`,
-              food: sql`${users.food} + 1`
-            })
-            .where(eq(users.id, userId));
-        }
-
+        const outcome = await applyAutomatedLike(tx, { replyId, userId, awardLikerBonus: true });
         await markUserActive(tx, userId);
-        return { status: 'liked' as const };
+        return outcome;
       });
 
       return outcome;

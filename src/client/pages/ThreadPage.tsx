@@ -73,6 +73,12 @@ const ThreadPage: React.FC<ThreadPageProps> = ({ userId, onRefreshUser }) => {
   if (!thread) return <div className="error-state">Thread not found</div>;
 
   const threadReplies = inverted ? [...(thread.replies ?? [])].reverse() : thread.replies ?? [];
+  const engagementStatus = thread.engagement?.status ?? 'inactive';
+  const engagementIndicator = engagementStatus === 'complete'
+    ? '✅'
+    : engagementStatus === 'queued' || engagementStatus === 'active'
+      ? '⏳'
+      : '❌';
 
   return (
     <div className="thread-view">
@@ -96,6 +102,7 @@ const ThreadPage: React.FC<ThreadPageProps> = ({ userId, onRefreshUser }) => {
           <span>🔥 {thread.fireGenerated ?? 0}</span>
           <span>💬 {thread.replyCount ?? 0} replies</span>
           <span>👥 {thread.uniquePosters ?? 0} unique</span>
+          <span title={engagementStatus === 'active' || engagementStatus === 'queued' ? 'Engagement running' : engagementStatus === 'complete' ? 'Engagement complete' : 'No engagement running'}>{engagementIndicator}</span>
         </div>
       </div>
 
