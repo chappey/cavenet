@@ -16,6 +16,8 @@ function App() {
   const [feed, setFeed] = useState<any[]>([]);
   const [currentSort, setCurrentSort] = useState('newest');
   const [loading, setLoading] = useState(true);
+  const [showGame, setShoeGame] = useState(false);
+  const [meat, setMeat] = useState(0);
 
   const fetchUsers = useCallback(async () => {
     try {
