@@ -134,12 +134,12 @@ const clearData = () => {
 const seedData = () => {
   // ── Users ──
   const users = [
-    { id: makeId(), username: 'Grog',   bio: 'Fire master. Me make best flame.', food: 10, fire: 5, isPlayerCharacter: false },
-    { id: makeId(), username: 'Brakka', bio: 'Spear maker. Sharp thing good.', food: 8, fire: 3, isPlayerCharacter: false },
-    { id: makeId(), username: 'Unga',   bio: 'Hunter of big beast.', food: 6, fire: 7, isPlayerCharacter: false },
-    { id: makeId(), username: 'Thokk',  bio: 'Rock painter. Me draw mammoth.', food: 4, fire: 12, isPlayerCharacter: false },
-    { id: makeId(), username: 'Kira',   bio: 'Berry finder. Know all plant.', food: 12, fire: 2, isPlayerCharacter: false },
-    { id: makeId(), username: 'Drog',   bio: 'Strong. Carry big rock.', food: 3, fire: 0, isPlayerCharacter: false },
+    { id: makeId(), username: 'Grog',   bio: 'Fire keeper. Make camp glow all night.', food: 10, fire: 8, isPlayerCharacter: false },
+    { id: makeId(), username: 'Brakka', bio: 'Tool maker. Flint go click click and cut good.', food: 8, fire: 5, isPlayerCharacter: false },
+    { id: makeId(), username: 'Unga',   bio: 'Hunter. Track mammoth, deer, and snack.', food: 6, fire: 9, isPlayerCharacter: false },
+    { id: makeId(), username: 'Thokk',  bio: 'Cave artist. Paint big story on wall.', food: 4, fire: 12, isPlayerCharacter: false },
+    { id: makeId(), username: 'Kira',   bio: 'Berry forager. Know safe plant and tasty root.', food: 12, fire: 4, isPlayerCharacter: false },
+    { id: makeId(), username: 'Drog',   bio: 'Rock hauler. Build shelter and stack stone.', food: 3, fire: 1, isPlayerCharacter: false },
   ];
 
   const insertUser = sqlite.query(
@@ -158,9 +158,11 @@ const seedData = () => {
 
   // ── Tribes ──
   const tribes = [
-    { id: makeId(), name: 'Mountain Clan',  abbr: 'MTN', description: 'Strong cave people of the high rocks. We hunt mammoth.', creatorId: users[0].id },
-    { id: makeId(), name: 'River Tribe',    abbr: 'RVR', description: 'Fish catchers and reed weavers by the big water.', creatorId: users[2].id },
-    { id: makeId(), name: 'Shadow Painters', abbr: 'SHPN', description: 'We paint story on cave wall. Art is life.', creatorId: users[3].id },
+    { id: makeId(), name: 'Hunter Hollow',    abbr: 'HUNT', description: 'Track big game, share trail maps, and show spear wins.', creatorId: users[2].id },
+    { id: makeId(), name: 'Flint Forge',      abbr: 'FLNT', description: 'Tool talk for stone chips, spear tips, and smart builds.', creatorId: users[1].id },
+    { id: makeId(), name: 'Painted Cave',     abbr: 'PAIN', description: 'Wall art, ochre recipes, and story marks for the clan.', creatorId: users[3].id },
+    { id: makeId(), name: 'Fire Circle',      abbr: 'FIRE', description: 'Keep flame alive, swap ember tricks, and celebrate warmth.', creatorId: users[0].id },
+    { id: makeId(), name: 'Berry Patch',      abbr: 'BERR', description: 'Safe berries, sweet roots, and foraging gossip.', creatorId: users[4].id },
   ];
 
   const insertTribe = sqlite.query(
@@ -172,18 +174,26 @@ const seedData = () => {
 
   // ── Tribe Memberships ──
   const memberships = [
-    // Mountain Clan: Grog (creator), Brakka, Drog
+    // Hunter Hollow: Unga (creator), Grog, Drog
+    { userId: users[2].id, tribeId: tribes[0].id },
     { userId: users[0].id, tribeId: tribes[0].id },
-    { userId: users[1].id, tribeId: tribes[0].id },
     { userId: users[5].id, tribeId: tribes[0].id },
-    // River Tribe: Unga (creator), Kira, Brakka
-    { userId: users[2].id, tribeId: tribes[1].id },
-    { userId: users[4].id, tribeId: tribes[1].id },
+    // Flint Forge: Brakka (creator), Grog, Drog
     { userId: users[1].id, tribeId: tribes[1].id },
-    // Shadow Painters: Thokk (creator), Grog, Kira
+    { userId: users[0].id, tribeId: tribes[1].id },
+    { userId: users[5].id, tribeId: tribes[1].id },
+    // Painted Cave: Thokk (creator), Grog, Kira
     { userId: users[3].id, tribeId: tribes[2].id },
     { userId: users[0].id, tribeId: tribes[2].id },
     { userId: users[4].id, tribeId: tribes[2].id },
+    // Fire Circle: Grog (creator), Brakka, Thokk
+    { userId: users[0].id, tribeId: tribes[3].id },
+    { userId: users[1].id, tribeId: tribes[3].id },
+    { userId: users[3].id, tribeId: tribes[3].id },
+    // Berry Patch: Kira (creator), Unga, Thokk
+    { userId: users[4].id, tribeId: tribes[4].id },
+    { userId: users[2].id, tribeId: tribes[4].id },
+    { userId: users[3].id, tribeId: tribes[4].id },
   ];
 
   const insertMembership = sqlite.query(
@@ -196,40 +206,40 @@ const seedData = () => {
   // ── Threads ──
   const threadData = [
     {
-      id: makeId(), creatorId: users[0].id, tribeId: tribes[0].id, type: 'text',
-      title: 'Berry Bush Discovery',
-      content: 'Me find big berry bush near river. Good food. Many berry, enough for whole clan. We go at sun-up.',
-      fireGenerated: 8,
+      id: makeId(), creatorId: users[2].id, tribeId: tribes[0].id, type: 'text',
+      title: 'Best Mammoth Trail',
+      content: 'Me spot fresh mammoth track by north ridge. Trail go to open grass. Good hunt spot if we move quiet and early.',
+      fireGenerated: 10,
     },
     {
-      id: makeId(), creatorId: users[1].id, tribeId: null, type: 'mixed',
-      title: 'New Spear Design',
-      content: 'Made new spear with sharp rock and long stick. Pointy end go through mammoth hide. Works very good for hunting.',
-      fireGenerated: 4,
-    },
-    {
-      id: makeId(), creatorId: users[2].id, tribeId: tribes[1].id, type: 'text',
-      title: 'Warning: Mammoth Tracks',
-      content: 'Mammoth tracks by stone hill. Big ones. Maybe whole herd moving through valley. Be careful when gathering.',
-      fireGenerated: 12,
+      id: makeId(), creatorId: users[1].id, tribeId: tribes[1].id, type: 'mixed',
+      title: 'Flint Knife Test',
+      content: 'Me chip flint into tiny knife. Cuts hide clean and easy. Need tell if edge stay sharp after many uses.',
+      fireGenerated: 7,
     },
     {
       id: makeId(), creatorId: users[3].id, tribeId: tribes[2].id, type: 'text',
-      title: 'New Cave Painting Technique',
-      content: 'Me mix berry juice with mud. Make purple color never seen before! Come see on east wall of big cave.',
+      title: 'New Ochre Mix',
+      content: 'Me mix red dirt, berry juice, and fat. Color stay bright on wall and not drip much. Good for big story scene.',
       fireGenerated: 15,
     },
     {
-      id: makeId(), creatorId: users[4].id, tribeId: tribes[1].id, type: 'text',
-      title: 'Which Berry Safe?',
-      content: 'Found new berry. Red with white spots. Smell sweet but me not sure if safe. Anyone know this berry?',
-      fireGenerated: 6,
+      id: makeId(), creatorId: users[0].id, tribeId: tribes[3].id, type: 'text',
+      title: 'Fire Pit Upgrade',
+      content: 'Stack stone around fire pit. Flame stay warm longer and wind not steal heat. Might be best camp fire yet.',
+      fireGenerated: 13,
     },
     {
-      id: makeId(), creatorId: users[0].id, tribeId: null, type: 'text',
-      title: 'Fire Making Contest',
-      content: 'Me challenge any cave person to fire making contest. First one to make big flame win extra food from tribe.',
-      fireGenerated: 3,
+      id: makeId(), creatorId: users[4].id, tribeId: tribes[4].id, type: 'text',
+      title: 'Safe Berry Map',
+      content: 'Found three berry bushes east of creek. Two safe, one bad. I draw little rock map so nobody eat wrong thing.',
+      fireGenerated: 9,
+    },
+    {
+      id: makeId(), creatorId: users[5].id, tribeId: null, type: 'text',
+      title: 'Shelter Rock Stack',
+      content: 'Build wall with flat stone and mud. Keeps rain out and makes sleeping spot less cold. Maybe add bone hook for gear.',
+      fireGenerated: 5,
     },
   ];
 
@@ -243,26 +253,26 @@ const seedData = () => {
 
   // ── Replies ──
   const replyData = [
-    // Thread 0 (Berry Bush) replies
-    { id: makeId(), threadId: threadData[0].id, creatorId: users[1].id, content: 'I go too. We carry basket. Me bring big one made from reed.', index: 1, fire: 3 },
-    { id: makeId(), threadId: threadData[0].id, creatorId: users[2].id, content: 'I watch for wolf while gather. Bring spear just in case.', index: 2, fire: 2 },
-    { id: makeId(), threadId: threadData[0].id, creatorId: users[4].id, content: 'Me know that bush! Berry very sweet. But watch for thorns on left side.', index: 3, fire: 1 },
-    // Thread 2 (Mammoth Warning) replies
-    { id: makeId(), threadId: threadData[2].id, creatorId: users[0].id, content: 'We should set fire ring around camp tonight. Mammoth afraid of fire.', index: 1, fire: 3 },
-    { id: makeId(), threadId: threadData[2].id, creatorId: users[1].id, content: 'Me make extra spears. Everyone should carry one when going out.', index: 2, fire: 2 },
-    { id: makeId(), threadId: threadData[2].id, creatorId: users[3].id, content: 'Me paint warning sign on rocks near trail. Red hand mean danger.', index: 3, fire: 1 },
-    { id: makeId(), threadId: threadData[2].id, creatorId: users[4].id, content: 'Hide food stores underground. Mammoth can smell food from far.', index: 4, fire: 1 },
-    { id: makeId(), threadId: threadData[2].id, creatorId: users[0].id, content: 'Good idea with paint, Thokk. Me add fire marks too.', index: 5, fire: 1 },
-    // Thread 3 (Cave Painting) replies
-    { id: makeId(), threadId: threadData[3].id, creatorId: users[0].id, content: 'Purple?! Me must see this. Coming to big cave after hunt.', index: 1, fire: 3 },
-    { id: makeId(), threadId: threadData[3].id, creatorId: users[4].id, content: 'Which berry you use? Me have many type. Can bring more for painting.', index: 2, fire: 2 },
-    { id: makeId(), threadId: threadData[3].id, creatorId: users[2].id, content: 'Can you paint my hunting story? Me bring food as trade.', index: 3, fire: 1 },
-    { id: makeId(), threadId: threadData[3].id, creatorId: users[1].id, content: 'Art is magic. Me want learn. Can Thokk teach?', index: 4, fire: 1 },
-    // Thread 4 (Berry question) replies
-    { id: makeId(), threadId: threadData[4].id, creatorId: users[0].id, content: 'NO EAT! Red with white spot is BAD berry. Make belly hurt for many sun.', index: 1, fire: 3 },
-    { id: makeId(), threadId: threadData[4].id, creatorId: users[3].id, content: 'Me paint picture of bad berry on warning wall. All should know.', index: 2, fire: 2 },
-    // Thread 1 (New Spear) replies
-    { id: makeId(), threadId: threadData[1].id, creatorId: users[0].id, content: 'Good spear. Make one for me. Me trade fire-starting rocks.', index: 1, fire: 3 },
+    // Thread 0 (Best Mammoth Trail) replies
+    { id: makeId(), threadId: threadData[0].id, creatorId: users[0].id, content: 'Hunter Hollow like this. Me bring fire and rope. Mammoth not escape us.', index: 1, fire: 3 },
+    { id: makeId(), threadId: threadData[0].id, creatorId: users[1].id, content: 'Need better hook on spear before hunt. Me make small fix tonight.', index: 2, fire: 2 },
+    { id: makeId(), threadId: threadData[0].id, creatorId: users[5].id, content: 'I make stone marker on trail so nobody get lost in grass.', index: 3, fire: 1 },
+    // Thread 2 (New Ochre Mix) replies
+    { id: makeId(), threadId: threadData[2].id, creatorId: users[0].id, content: 'Color strong. Me want use on fire stories. Show more wall.', index: 1, fire: 3 },
+    { id: makeId(), threadId: threadData[2].id, creatorId: users[4].id, content: 'Berry juice maybe make it smell sweet too. Good for art and snack.', index: 2, fire: 2 },
+    { id: makeId(), threadId: threadData[2].id, creatorId: users[1].id, content: 'Need tiny stone cup for mix. I can carve one.', index: 3, fire: 1 },
+    { id: makeId(), threadId: threadData[2].id, creatorId: users[2].id, content: 'Paint my hunt on wall next. Big beast go here.', index: 4, fire: 1 },
+    { id: makeId(), threadId: threadData[2].id, creatorId: users[0].id, content: 'Good mix, Thokk. Maybe add ash for darker line.', index: 5, fire: 1 },
+    // Thread 3 (Fire Pit Upgrade) replies
+    { id: makeId(), threadId: threadData[3].id, creatorId: users[1].id, content: 'Stone circle smart. Toolmaker say yes. Safer for big fire.', index: 1, fire: 3 },
+    { id: makeId(), threadId: threadData[3].id, creatorId: users[3].id, content: 'I paint flames on new wall. Fire circle need art too.', index: 2, fire: 2 },
+    { id: makeId(), threadId: threadData[3].id, creatorId: users[5].id, content: 'Put drying rack near heat. Rock shelf best for meat.', index: 3, fire: 1 },
+    { id: makeId(), threadId: threadData[3].id, creatorId: users[2].id, content: 'Fire help hunter too. Warm spear hand before dawn.', index: 4, fire: 1 },
+    // Thread 4 (Safe Berry Map) replies
+    { id: makeId(), threadId: threadData[4].id, creatorId: users[2].id, content: 'Good map. Hunter can follow creek to safe berries after chase.', index: 1, fire: 3 },
+    { id: makeId(), threadId: threadData[4].id, creatorId: users[3].id, content: 'I draw bad berry with big red skull on wall now.', index: 2, fire: 2 },
+    // Thread 1 (Flint Knife Test) replies
+    { id: makeId(), threadId: threadData[1].id, creatorId: users[0].id, content: 'Knife looks sharp. Me use to cut rope and skin.', index: 1, fire: 3 },
   ];
 
   const insertReply = sqlite.query(
@@ -291,13 +301,19 @@ const seedData = () => {
   const insertThreadStats = sqlite.query(
     'INSERT INTO user_thread_stats (user_id, thread_id, fire_generated, last_reply_index) VALUES (?, ?, ?, ?)'
   );
-  insertThreadStats.run(users[1].id, threadData[0].id, 3, 1);
-  insertThreadStats.run(users[2].id, threadData[0].id, 2, 2);
-  insertThreadStats.run(users[4].id, threadData[0].id, 1, 3);
+  insertThreadStats.run(users[0].id, threadData[0].id, 3, 1);
+  insertThreadStats.run(users[1].id, threadData[0].id, 2, 2);
+  insertThreadStats.run(users[5].id, threadData[0].id, 1, 3);
   insertThreadStats.run(users[0].id, threadData[2].id, 4, 5);
-  insertThreadStats.run(users[1].id, threadData[2].id, 2, 2);
-  insertThreadStats.run(users[3].id, threadData[2].id, 1, 3);
-  insertThreadStats.run(users[4].id, threadData[2].id, 1, 4);
+  insertThreadStats.run(users[1].id, threadData[2].id, 2, 3);
+  insertThreadStats.run(users[2].id, threadData[2].id, 1, 4);
+  insertThreadStats.run(users[4].id, threadData[2].id, 2, 2);
+  insertThreadStats.run(users[1].id, threadData[3].id, 3, 1);
+  insertThreadStats.run(users[3].id, threadData[3].id, 2, 2);
+  insertThreadStats.run(users[5].id, threadData[3].id, 1, 3);
+  insertThreadStats.run(users[2].id, threadData[3].id, 1, 4);
+  insertThreadStats.run(users[2].id, threadData[4].id, 3, 1);
+  insertThreadStats.run(users[3].id, threadData[4].id, 2, 2);
   insertThreadStats.run(users[0].id, threadData[1].id, 3, 1);
 
   // ── Reward Events ──
