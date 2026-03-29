@@ -8,6 +8,7 @@ export const users = sqliteTable('users', {
   isPlayerCharacter: integer('is_player_character', { mode: 'boolean' }).notNull().default(false),
   food: integer('food').notNull().default(10),
   fire: integer('fire').notNull().default(0),
+  huntCooldownUntil: integer('hunt_cooldown_until', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date(0)),
   lastActiveAt: integer('last_active_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
 });

@@ -99,6 +99,27 @@ const getOrganicLikeBudget = (qualityScore: number, availableNpcCount: number) =
   return Math.min(base, Math.max(0, availableNpcCount));
 };
 
+const HUNT_COOLDOWN_BASE_SIM_MINUTES = 30;
+const HUNT_COOLDOWN_PER_FIRE_SIM_MINUTES = 12;
+
+const getHuntCooldownSimMinutes = (fireReward: number) => {
+  if (fireReward <= 0) return 0;
+  return HUNT_COOLDOWN_BASE_SIM_MINUTES + (fireReward * HUNT_COOLDOWN_PER_FIRE_SIM_MINUTES);
+};
+
+const getRemainingHuntCooldown = (until: Date | number | null | undefined) => {
+  const cooldownUntilMs = until instanceof Date ? until.getTime() : Number(until ?? 0);
+  const remainingMs = Math.max(0, cooldownUntilMs - Date.now());
+  const remainingSimMs = Math.floor(remainingMs * TIME_SCALE);
+  return {
+    remainingMs,
+    remainingSimMs,
+    remainingSimSeconds: Math.ceil(remainingSimMs / 1000),
+    canPlay: remainingMs <= 0,
+    cooldownUntilMs,
+  };
+};
+
 type AutoPostAgent = {
   id: string;
   username: string;
@@ -620,7 +641,8 @@ const buildAutoPostDraft = async (agent: AutoPostAgent) => {
     };
   } catch (error) {
     console.warn(`[ai-scheduler] ${agent.username} draft fallback used:`, error);
-    return buildFallbackAutoPostDraft(agent);
+    const fallback = buildFallbackAutoPostDraft(agent);
+    return { ...fallback, imagePrompt: undefined };
   }
 };
 
@@ -1262,6 +1284,64 @@ const app = new Elysia()
       return outcome;
     })
 
+    // ── Games ──
+
+    .post('/games/hunt/claim', async ({ body, userId }) => {
+      if (!userId) throw new Error('No user selected');
+
+      const runId = String(body.runId ?? '').trim();
+      if (!runId) throw new Error('Missing run id');
+
+      const score = clamp(Math.floor(Number(body.score ?? 0)), 0, 50);
+      const fireReward = score <= 0 ? 0 : Math.min(12, Math.max(1, score));
+
+      const outcome = await db.transaction(async (tx) => {
+        const event = await tx.insert(rewardEvents)
+          .values({ type: 'hunt_game', refId: runId })
+          .onConflictDoNothing()
+          .returning();
+
+        if (event.length === 0) {
+          console.info(`[game:hunt] duplicate claim ignored for ${userId} run=${runId}`);
+          return { status: 'already_claimed' as const, fireReward: 0 };
+        }
+
+        if (fireReward > 0) {
+          await tx.update(users)
+            .set({
+              fire: sql`${users.fire} + ${fireReward}`,
+            })
+            .where(eq(users.id, userId));
+        }
+
+        await markUserActive(tx, userId);
+        return {
+          status: 'claimed' as const,
+          fireReward,
+          cooldownUntil: 0,
+          remainingSimSeconds: 0,
+        };
+      });
+
+      console.info(`[game:hunt] user=${userId} run=${runId} score=${score} fire=${outcome.fireReward} status=${outcome.status}`);
+      return outcome;
+    }, {
+      body: t.Object({
+        runId: t.String(),
+        score: t.Number(),
+      }),
+    })
+
+    .get('/games/hunt/status', async ({ userId }) => {
+      return {
+        canPlay: true,
+        cooldownUntil: 0,
+        remainingSimSeconds: 0,
+        remainingRealMs: 0,
+        timeScale: TIME_SCALE,
+      };
+    })
+
     // ── Tribes ──
 
     .get('/tribes', async () => {
@@ -1410,10 +1490,6 @@ const app = new Elysia()
     // ── AI ──
 
     .post('/ai/thread-draft', async ({ body }) => {
-      if (!isGoogleGenAIConfigured()) {
-        throw new Error('Missing Gemini API key');
-      }
-
       return await generateThreadDraft(body.prompt);
     }, {
       body: t.Object({

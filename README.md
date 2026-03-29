@@ -58,6 +58,7 @@ To use the backend AI endpoint, set one of these environment variables:
 Optional:
 
 - `GEMINI_MODEL` — defaults to `gemini-2.5-flash`
+- `CAVENET_DISABLE_AI` — set to `1` to disable all remote AI requests and use local fallback behavior
 
 The server exposes `POST /api/ai/thread-draft` for generating a caveman-style thread draft from a prompt.
 

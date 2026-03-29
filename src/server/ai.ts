@@ -57,6 +57,7 @@ const REPLY_MOODS: Record<ReplyMood, string> = {
 
 const apiKey = Bun.env.GEMINI_API_KEY ?? Bun.env.GOOGLE_API_KEY;
 const preferredModel = Bun.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
+const aiDisabled = ['1', 'true', 'yes', 'on'].includes(String(Bun.env.CAVENET_DISABLE_AI ?? Bun.env.DISABLE_AI ?? '').toLowerCase());
 const client = apiKey ? new GoogleGenAI({ apiKey }) : null;
 const fallbackModels = [preferredModel, 'gemini-2.5-flash', 'gemini-2.0-flash']
 	.filter((value, index, self) => self.indexOf(value) === index);
@@ -167,17 +168,73 @@ const buildLocalCharacterDraft = (): CharacterDraft => {
 	};
 };
 
-export const isGoogleGenAIConfigured = () => client !== null;
+const buildLocalThreadDraft = (prompt: string): ThreadDraft => {
+	const cleanedPrompt = prompt.trim();
+	const base = cleanedPrompt.length > 0 ? cleanedPrompt : 'cave life today';
+	const title = base
+		.replace(/\s+/g, ' ')
+		.split(' ')
+		.slice(0, 6)
+		.join(' ')
+		.slice(0, 60);
+
+	return {
+		title: title ? `Cave take: ${title}` : 'Cave take',
+		content: `Me think: ${base}. Cave people, what say?`,
+		type: 'text',
+	};
+};
+
+const buildLocalReplyDrafts = ({
+	profiles,
+	qualityScore,
+	threadTitle,
+	mood,
+}: {
+	profiles: AiReplyProfile[];
+	qualityScore: number;
+	threadTitle: string | null;
+	mood: ReplyMood;
+}): AiReplyDraft[] => {
+	const openers: Record<ReplyMood, string[]> = {
+		hyped: ['OOG!', 'YES!', 'BIG YES!'],
+		skeptical: ['Hmm.', 'Maybe.', 'Not sure.'],
+		wise: ['Old cave know:', 'Me think:', 'Stone truth:'],
+		jealous: ['Me want that.', 'Why not me?', 'Unfair!'],
+		goofy: ['Hehe.', 'Me no know but like.', 'Mmmm cave brain.'],
+	};
+
+	const closers = ['That good.', 'Me like.', 'Rock on.'];
+	const replyTarget = Math.min(profiles.length, qualityScore < 25 ? 1 : qualityScore < 45 ? 2 : qualityScore < 70 ? 3 : 4);
+
+	return profiles.slice(0, replyTarget).map((profile, index) => {
+		const opener = openers[mood][index % openers[mood].length];
+		const closer = closers[(qualityScore + index) % closers.length];
+		return {
+			username: profile.username,
+			content: `${opener} ${profile.username} say ${closer}${threadTitle ? ` About ${threadTitle}.` : ''}`.trim(),
+		};
+	});
+};
+
+const shouldUseRemoteAi = () => !aiDisabled && client !== null;
+
+export const isGoogleGenAIConfigured = () => shouldUseRemoteAi();
 
 export const generateThreadDraft = async (prompt: string) => {
-	if (!client) {
-		throw new Error('Missing Gemini API key. Set GEMINI_API_KEY or GOOGLE_API_KEY.');
+	if (!shouldUseRemoteAi()) {
+		return buildLocalThreadDraft(prompt);
+	}
+
+	const remoteClient = client;
+	if (!remoteClient) {
+		return buildLocalThreadDraft(prompt);
 	}
 
 	let lastError: unknown;
 	for (const model of fallbackModels) {
 		try {
-			const response = await client.models.generateContent({
+			const response = await remoteClient.models.generateContent({
 				model,
 				contents: [
 					{
@@ -294,8 +351,13 @@ export const generateThreadReplies = async ({
 	qualityScore: number;
 	maxReplies?: number;
 }) => {
-	if (!client) {
-		throw new Error('Missing Gemini API key. Set GEMINI_API_KEY or GOOGLE_API_KEY.');
+	if (!shouldUseRemoteAi()) {
+		return buildLocalReplyDrafts({ profiles, qualityScore, threadTitle, mood });
+	}
+
+	const remoteClient = client;
+	if (!remoteClient) {
+		return buildLocalReplyDrafts({ profiles, qualityScore, threadTitle, mood });
 	}
 
 	if (profiles.length === 0 || maxReplies <= 0) {
@@ -328,7 +390,7 @@ export const generateThreadReplies = async ({
 	let lastError: unknown;
 	for (const model of fallbackModels) {
 		try {
-			const response = await client.models.generateContent({
+			const response = await remoteClient.models.generateContent({
 				model,
 				contents: prompt,
 			});

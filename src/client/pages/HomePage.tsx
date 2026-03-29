@@ -26,9 +26,9 @@ const HomePage: React.FC<HomePageProps> = ({ feed, onPost, onSortChange, current
         <Link to="/stats" className="btn-carve home-stats-btn">
           📊 View Stats
         </Link>
-        <button className="btn-carve home-games-btn" type="button" disabled>
-          🎮 Games Soon
-        </button>
+        <Link to="/games/hunt" className="btn-carve home-games-btn">
+          🎮 Hunt for Fire
+        </Link>
       </div>
 
       {/* Sort controls */}

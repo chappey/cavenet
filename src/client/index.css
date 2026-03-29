@@ -411,6 +411,90 @@
   cursor: not-allowed;
 }
 
+/* ── Hunt Game ── */
+.game-view {
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+.game-header {
+  margin-bottom: 1rem;
+}
+
+.game-shell {
+  background: linear-gradient(180deg, rgba(255, 122, 0, 0.06), rgba(0, 0, 0, 0.22));
+  border: 1px solid rgba(255, 122, 0, 0.18);
+  border-radius: 20px;
+  padding: 1rem;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.game-topbar {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.game-stat {
+  padding: 0.5rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--color-cave-100);
+  font-size: 0.85rem;
+}
+
+.hunt-canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #100b08;
+}
+
+.game-status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.85rem;
+}
+
+.game-status-text {
+  color: var(--color-cave-200);
+  font-size: 0.9rem;
+}
+
+.game-controls-hint {
+  color: var(--color-cave-300);
+  font-size: 0.82rem;
+}
+
+.game-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.game-exit-link {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.game-reward-card {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 122, 0, 0.22);
+  background: rgba(255, 122, 0, 0.08);
+  color: var(--color-cave-100);
+}
+
 /* ── Sort Controls ── */
 .sort-controls {
   display: flex;

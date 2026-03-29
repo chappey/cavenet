@@ -26,6 +26,7 @@ const createSchema = () => {
       is_player_character INTEGER NOT NULL DEFAULT 0,
       food INTEGER NOT NULL DEFAULT 10,
       fire INTEGER NOT NULL DEFAULT 0,
+      hunt_cooldown_until INTEGER NOT NULL DEFAULT 0,
       last_active_at INTEGER NOT NULL,
       created_at INTEGER NOT NULL
     );
@@ -143,10 +144,10 @@ const seedData = () => {
   ];
 
   const insertUser = sqlite.query(
-    'INSERT INTO users (id, username, bio, avatar, is_player_character, food, fire, last_active_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO users (id, username, bio, avatar, is_player_character, food, fire, hunt_cooldown_until, last_active_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
   for (const u of users) {
-    insertUser.run(u.id, u.username, u.bio, '', u.isPlayerCharacter ? 1 : 0, u.food, u.fire, nowMs, ago(24 * users.indexOf(u)));
+    insertUser.run(u.id, u.username, u.bio, '', u.isPlayerCharacter ? 1 : 0, u.food, u.fire, 0, nowMs, ago(24 * users.indexOf(u)));
   }
 
   const insertActivity = sqlite.query(
