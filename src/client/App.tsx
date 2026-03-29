@@ -9,6 +9,7 @@ import ProfilePage from './pages/ProfilePage';
 import TribePage from './pages/TribePage';
 import TribesListPage from './pages/TribesListPage';
 import LeaderboardPage from './pages/LeaderboardPage';
+import StatsPage from './pages/StatsPage';
 
 function App() {
   const [userId, setUserId] = useState<string | null>(getCurrentUserId());
@@ -231,6 +232,9 @@ function App() {
         } />
         <Route path="leaderboard" element={
           <LeaderboardPage users={allUsers} currentUserId={userId} />
+        } />
+        <Route path="stats" element={
+          <StatsPage />
         } />
         <Route path="tribes/:id" element={
           <TribePage userId={userId} onRefreshUser={refreshUser} />

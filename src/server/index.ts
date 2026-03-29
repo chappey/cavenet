@@ -35,6 +35,13 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
+const toDayKey = (value: Date | string | number) => new Date(value).toISOString().slice(0, 10);
+
+const formatDayLabel = (dayKey: string) => {
+  const date = new Date(`${dayKey}T00:00:00Z`);
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(date);
+};
+
 const scoreThreadQuality = (title: string | null | undefined, content: string) => {
   const text = `${title ?? ''} ${content}`.trim();
   if (!text) return 0;
@@ -82,6 +89,8 @@ const getLikeFireCap = (qualityScore: number, availableUsers: number) => {
   const cap = qualityScore < 45 ? 1 : qualityScore < 70 ? 3 : qualityScore < 85 ? 5 : 7;
   return Math.min(cap, Math.max(0, availableUsers - 1));
 };
+
+const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
 
 const shuffle = <T,>(items: T[]) => {
   const copy = [...items];
@@ -503,6 +512,110 @@ const app = new Elysia()
       }
 
       return enriched;
+    })
+
+    .get('/stats', async () => {
+      const [userRows, tribeRows, threadRows, replyRows, likeRows] = await Promise.all([
+        db.select({
+          id: users.id,
+          username: users.username,
+          fire: users.fire,
+          food: users.food,
+          isPlayerCharacter: users.isPlayerCharacter,
+        }).from(users),
+        db.select({ id: tribes.id }).from(tribes),
+        db.select({
+          id: threads.id,
+          creatorId: threads.creatorId,
+          createdAt: threads.createdAt,
+        }).from(threads),
+        db.select({
+          id: replies.id,
+          creatorId: replies.creatorId,
+          likes: replies.likes,
+          createdAt: replies.createdAt,
+        }).from(replies),
+        db.select({
+          id: likes.id,
+          createdAt: likes.createdAt,
+        }).from(likes),
+      ]);
+
+      const summary = {
+        fire: userRows.reduce((total, user) => total + (user.fire ?? 0), 0),
+        food: userRows.reduce((total, user) => total + (user.food ?? 0), 0),
+        users: userRows.length,
+        playerCharacters: userRows.filter(user => user.isPlayerCharacter).length,
+        npcCharacters: userRows.filter(user => !user.isPlayerCharacter).length,
+        posts: threadRows.length,
+        replies: replyRows.length,
+        likes: likeRows.length,
+        tribes: tribeRows.length,
+      };
+
+      const activityBreakdown = [
+        { metric: 'Fire', value: summary.fire },
+        { metric: 'Food', value: summary.food },
+        { metric: 'Users', value: summary.users },
+        { metric: 'Player characters', value: summary.playerCharacters },
+        { metric: 'NPC characters', value: summary.npcCharacters },
+        { metric: 'Posts', value: summary.posts },
+        { metric: 'Replies', value: summary.replies },
+        { metric: 'Likes', value: summary.likes },
+        { metric: 'Tribes', value: summary.tribes },
+      ];
+
+      const today = new Date();
+      const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - 6));
+      const dayKeys = Array.from({ length: 7 }, (_, index) => toDayKey(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + index)));
+      const timelineBase = Object.fromEntries(dayKeys.map(day => [day, { day: formatDayLabel(day), posts: 0, replies: 0, likes: 0 }]));
+
+      for (const thread of threadRows) {
+        const day = toDayKey(thread.createdAt);
+        if (timelineBase[day]) timelineBase[day].posts += 1;
+      }
+
+      for (const reply of replyRows) {
+        const day = toDayKey(reply.createdAt);
+        if (timelineBase[day]) timelineBase[day].replies += 1;
+      }
+
+      for (const like of likeRows) {
+        const day = toDayKey(like.createdAt);
+        if (timelineBase[day]) timelineBase[day].likes += 1;
+      }
+
+      const activityTimeline = dayKeys.map(day => timelineBase[day]);
+
+      const topUsers = [...userRows]
+        .sort((a, b) => {
+          if (b.fire !== a.fire) return b.fire - a.fire;
+          const aPosts = threadRows.filter(thread => thread.creatorId === a.id).length;
+          const bPosts = threadRows.filter(thread => thread.creatorId === b.id).length;
+          if (bPosts !== aPosts) return bPosts - aPosts;
+          const aReplies = replyRows.filter(reply => reply.creatorId === a.id).length;
+          const bReplies = replyRows.filter(reply => reply.creatorId === b.id).length;
+          if (bReplies !== aReplies) return bReplies - aReplies;
+          return a.username.localeCompare(b.username);
+        })
+        .slice(0, 10)
+        .map((user) => ({
+          id: user.id,
+          username: user.username,
+          isPlayerCharacter: user.isPlayerCharacter,
+          fire: user.fire,
+          food: user.food,
+          posts: threadRows.filter(thread => thread.creatorId === user.id).length,
+          replies: replyRows.filter(reply => reply.creatorId === user.id).length,
+          likesReceived: replyRows.filter(reply => reply.creatorId === user.id).reduce((total, reply) => total + (reply.likes ?? 0), 0),
+        }));
+
+      return {
+        summary,
+        activityBreakdown,
+        activityTimeline,
+        topUsers,
+      };
     })
 
     // ── Threads ──
