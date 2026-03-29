@@ -3,13 +3,15 @@ import { useParams, Link } from 'react-router-dom';
 import { apiFetch } from '../lib/api';
 import { getFireGlowStyle } from '../components/FireGlow';
 import Composer from '../components/Composer';
+import { useToast } from '../components/ui/toast';
+import type { ReplySummary, ThreadDetailResponse } from 'src/shared/contracts';
 
 interface ThreadPageProps {
   userId: string | null;
   onRefreshUser: () => void;
 }
 
-const timeAgo = (date: any): string => {
+const timeAgo = (date: string | Date): string => {
   const d = date instanceof Date ? date : new Date(date);
   const seconds = Math.floor((Date.now() - d.getTime()) / 1000);
   if (seconds < 60) return 'just now';
@@ -23,7 +25,8 @@ const timeAgo = (date: any): string => {
 
 const ThreadPage: React.FC<ThreadPageProps> = ({ userId, onRefreshUser }) => {
   const { id } = useParams<{ id: string }>();
-  const [thread, setThread] = useState<any>(null);
+  const { error: showError } = useToast();
+  const [thread, setThread] = useState<ThreadDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [inverted, setInverted] = useState(false);
 
@@ -31,7 +34,7 @@ const ThreadPage: React.FC<ThreadPageProps> = ({ userId, onRefreshUser }) => {
     if (!id) return;
     try {
       setLoading(true);
-      const data = await apiFetch<any>(`/threads/${id}`);
+      const data = await apiFetch<ThreadDetailResponse>(`/threads/${id}`);
       setThread(data);
     } catch (e) {
       console.error('Failed to load thread', e);
@@ -54,7 +57,8 @@ const ThreadPage: React.FC<ThreadPageProps> = ({ userId, onRefreshUser }) => {
       await fetchThread();
       onRefreshUser();
     } catch (e: any) {
-      alert(`Failed to reply: ${e.message}`);
+      const message = e instanceof Error ? e.message : 'Failed to reply.';
+      showError('Reply failed', message);
       throw e;
     }
   };
@@ -65,14 +69,15 @@ const ThreadPage: React.FC<ThreadPageProps> = ({ userId, onRefreshUser }) => {
       await fetchThread();
       onRefreshUser();
     } catch (e: any) {
-      alert(`Failed to like: ${e.message}`);
+      const message = e instanceof Error ? e.message : 'Failed to like.';
+      showError('Like failed', message);
     }
   };
 
   if (loading && !thread) return <div className="loading-state">Loading thread...</div>;
   if (!thread) return <div className="error-state">Thread not found</div>;
 
-  const threadReplies = inverted ? [...(thread.replies ?? [])].reverse() : thread.replies ?? [];
+  const threadReplies = inverted ? [...thread.replies].reverse() : thread.replies;
   const engagementStatus = thread.engagement?.status ?? 'inactive';
   const engagementIndicator = engagementStatus === 'complete'
     ? '✅'
@@ -108,7 +113,7 @@ const ThreadPage: React.FC<ThreadPageProps> = ({ userId, onRefreshUser }) => {
 
       {/* Replies */}
       <div className="thread-replies-header">
-        <h3>Replies ({thread.replies?.length ?? 0})</h3>
+        <h3>Replies ({thread.replies.length})</h3>
         <button
           className="sort-btn"
           onClick={() => setInverted(!inverted)}
@@ -118,7 +123,7 @@ const ThreadPage: React.FC<ThreadPageProps> = ({ userId, onRefreshUser }) => {
       </div>
 
       <div className="thread-replies">
-        {threadReplies.map((reply: any) => {
+        {threadReplies.map((reply: ReplySummary) => {
           const replyFire = reply.fireGenerated ?? 0;
           const replyLikes = reply.likes ?? 0;
 

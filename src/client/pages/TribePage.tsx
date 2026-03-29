@@ -5,6 +5,8 @@ import ProfileSidebar from '../components/ProfileSidebar';
 import ThreadCard from '../components/ThreadCard';
 import UserCard from '../components/UserCard';
 import Composer from '../components/Composer';
+import { useToast } from '../components/ui/toast';
+import type { ThreadSummary, TribeSummary, TribeMembership, UserSummary } from 'src/shared/contracts';
 
 interface TribePageProps {
   userId: string | null;
@@ -13,7 +15,8 @@ interface TribePageProps {
 
 const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
   const { id } = useParams<{ id: string }>();
-  const [tribe, setTribe] = useState<any>(null);
+  const { error: showError, success: showSuccess } = useToast();
+  const [tribe, setTribe] = useState<(TribeSummary & { members?: UserSummary[]; threads?: ThreadSummary[] }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'threads' | 'members'>('threads');
@@ -24,7 +27,7 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
     try {
       setLoading(true);
       setError(null);
-      const data = await apiFetch<any>(`/tribes/${id}`);
+      const data = await apiFetch<TribeSummary & { members?: UserSummary[]; threads?: ThreadSummary[] }>(`/tribes/${id}`);
       setTribe(data);
     } catch (e: any) {
       console.error('Failed to load tribe', e);
@@ -38,7 +41,7 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
     fetchTribe();
   }, [id]);
 
-  const isMember = tribe?.members?.some((m: any) => m.id === userId);
+  const isMember = tribe?.members?.some((m) => m.id === userId);
 
   const handleJoin = async () => {
     if (!id || actionLoading) return;
@@ -47,8 +50,10 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
       await apiFetch(`/tribes/${id}/join`, { method: 'POST' });
       await fetchTribe();
       onRefreshUser();
+      showSuccess('Joined tribe', 'You are now part of the camp.');
     } catch (e: any) {
-      alert(`Failed to join: ${e.message}`);
+      const message = e instanceof Error ? e.message : 'Failed to join tribe.';
+      showError('Join failed', message);
     } finally {
       setActionLoading(false);
     }
@@ -61,8 +66,10 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
       await apiFetch(`/tribes/${id}/leave`, { method: 'POST' });
       await fetchTribe();
       onRefreshUser();
+      showSuccess('Left tribe', 'The camp fire cools a little.');
     } catch (e: any) {
-      alert(`Failed to leave: ${e.message}`);
+      const message = e instanceof Error ? e.message : 'Failed to leave tribe.';
+      showError('Leave failed', message);
     } finally {
       setActionLoading(false);
     }
@@ -83,7 +90,8 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
       await fetchTribe();
       onRefreshUser();
     } catch (e: any) {
-      alert(`Failed to post: ${e.message}`);
+      const message = e instanceof Error ? e.message : 'Failed to post.';
+      showError('Post failed', message);
       throw e;
     }
   };
@@ -108,7 +116,7 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
 
   if (!tribe) return <div className="error-state">Tribe not found</div>;
 
-  const totalFire = tribe.members?.reduce((s: number, m: any) => s + (m.fire ?? 0), 0) ?? 0;
+  const totalFire = tribe.members?.reduce((s: number, m) => s + (m.fire ?? 0), 0) ?? 0;
 
   return (
     <div className="two-column-layout">
@@ -168,7 +176,7 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
               />
             )}
             <div className="feed">
-              {tribe.threads?.map((thread: any) => (
+              {tribe.threads?.map((thread: ThreadSummary) => (
                 <ThreadCard key={thread.id} thread={thread} />
               ))}
               {(!tribe.threads || tribe.threads.length === 0) && (
@@ -181,7 +189,7 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
         {activeTab === 'members' && (
           <div className="tab-content">
             <div className="card-grid">
-              {tribe.members?.map((member: any) => (
+              {tribe.members?.map((member: UserSummary) => (
                 <UserCard key={member.id} user={member} />
               ))}
             </div>

@@ -5,6 +5,8 @@ import ProfileSidebar from '../components/ProfileSidebar';
 import ThreadCard from '../components/ThreadCard';
 import TribeCard from '../components/TribeCard';
 import Composer from '../components/Composer';
+import { useToast } from '../components/ui/toast';
+import type { ThreadSummary, TribeMembership, UserProfile } from 'src/shared/contracts';
 
 interface ProfilePageProps {
   userId: string | null;
@@ -14,7 +16,8 @@ interface ProfilePageProps {
 
 const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onRefreshUser, onPost }) => {
   const { id } = useParams<{ id: string }>();
-  const [profile, setProfile] = useState<any>(null);
+  const { error: showError } = useToast();
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'threads' | 'tribes'>('threads');
@@ -28,7 +31,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onRefreshUser, onPost
     try {
       setLoading(true);
       setError(null);
-      const data = await apiFetch<any>(`/users/${profileId}`);
+      const data = await apiFetch<UserProfile>(`/users/${profileId}`);
       setProfile(data);
     } catch (e: any) {
       console.error('Failed to load profile', e);
@@ -53,7 +56,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onRefreshUser, onPost
       await fetchProfile();
       onRefreshUser();
     } catch (e: any) {
-      alert(`Failed to update bio: ${e.message}`);
+      const message = e instanceof Error ? e.message : 'Failed to update bio.';
+      showError('Bio update failed', message);
     }
   };
 
@@ -124,7 +128,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onRefreshUser, onPost
               />
             )}
             <div className="feed">
-              {profile.threads?.map((thread: any) => (
+              {profile.threads?.map((thread: ThreadSummary) => (
                 <ThreadCard key={thread.id} thread={thread} />
               ))}
               {(!profile.threads || profile.threads.length === 0) && (
@@ -138,7 +142,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onRefreshUser, onPost
         {activeTab === 'tribes' && (
           <div className="tab-content">
             <div className="card-grid">
-              {profile.tribes?.map((tribe: any) => (
+              {profile.tribes?.map((tribe: TribeMembership) => (
                 <TribeCard key={tribe.tribeId} tribe={tribe} />
               ))}
               {(!profile.tribes || profile.tribes.length === 0) && (

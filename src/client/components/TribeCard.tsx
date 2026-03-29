@@ -1,38 +1,39 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import type { TribeSummary, TribeMembership } from 'src/shared/contracts';
 
 interface TribeCardProps {
-  tribe: {
-    tribeId?: string;
-    id?: string;
-    tribeName?: string;
-    name?: string;
-    tribeAbbreviation?: string;
-    abbreviation?: string;
-    tribeAvatar?: string;
-    avatar?: string;
-    tribeDescription?: string;
-    description?: string;
-    memberCount?: number;
-  };
+  tribe: TribeSummary | TribeMembership;
 }
+
+const isTribeMembership = (tribe: TribeSummary | TribeMembership): tribe is TribeMembership => {
+  return 'tribeId' in tribe;
+};
 
 /** Get a clean abbreviation — never show raw field names or empty text */
 const getAbbr = (tribe: TribeCardProps['tribe']): string => {
-  // Check explicit abbreviation fields, filtering out empty strings and the literal word "abbreviation"
-  for (const val of [tribe.tribeAbbreviation, tribe.abbreviation]) {
-    if (val && val.length <= 5 && val.toLowerCase() !== 'abbreviation') {
-      return val.toUpperCase();
+  if (isTribeMembership(tribe)) {
+    const abbr = tribe.tribeAbbreviation;
+    if (abbr && abbr.length <= 5 && abbr.toLowerCase() !== 'abbreviation') {
+      return abbr.toUpperCase();
     }
+
+    return tribe.tribeName[0]?.toUpperCase() || '?';
   }
+
+  const abbr = tribe.abbreviation;
+  if (abbr && abbr.length <= 5 && abbr.toLowerCase() !== 'abbreviation') {
+    return abbr.toUpperCase();
+  }
+
   // Fallback: first letter of name
-  const name = tribe.tribeName || tribe.name || '';
-  return name[0]?.toUpperCase() || '?';
+  return tribe.name[0]?.toUpperCase() || '?';
 };
 
 const TribeCard: React.FC<TribeCardProps> = ({ tribe }) => {
-  const id = tribe.tribeId ?? tribe.id ?? '';
-  const name = tribe.tribeName ?? tribe.name ?? 'Unknown';
+  const id = isTribeMembership(tribe) ? tribe.tribeId : tribe.id;
+  const name = isTribeMembership(tribe) ? tribe.tribeName : tribe.name;
+  const memberCount = isTribeMembership(tribe) ? undefined : tribe.memberCount;
   const abbr = getAbbr(tribe);
 
   return (
@@ -41,8 +42,8 @@ const TribeCard: React.FC<TribeCardProps> = ({ tribe }) => {
         <span>{abbr}</span>
       </div>
       <span className="tribe-card-name">{name}</span>
-      {tribe.memberCount !== undefined && (
-        <span className="tribe-card-members">👥 {tribe.memberCount}</span>
+      {memberCount !== undefined && (
+        <span className="tribe-card-members">👥 {memberCount}</span>
       )}
     </Link>
   );

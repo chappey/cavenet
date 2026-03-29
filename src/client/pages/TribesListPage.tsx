@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import TribeCard from '../components/TribeCard';
+import { useToast } from '../components/ui/toast';
+import type { TribeSummary } from 'src/shared/contracts';
 
 interface TribesListPageProps {
   userId: string | null;
@@ -8,7 +10,8 @@ interface TribesListPageProps {
 }
 
 const TribesListPage: React.FC<TribesListPageProps> = ({ userId, onRefreshUser }) => {
-  const [tribes, setTribes] = useState<any[]>([]);
+  const { error: showError, success: showSuccess } = useToast();
+  const [tribes, setTribes] = useState<TribeSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -17,7 +20,7 @@ const TribesListPage: React.FC<TribesListPageProps> = ({ userId, onRefreshUser }
   const fetchTribes = async () => {
     try {
       setLoading(true);
-      const data = await apiFetch<any[]>('/tribes');
+      const data = await apiFetch<TribeSummary[]>('/tribes');
       setTribes(data);
     } catch (e) {
       console.error('Failed to load tribes', e);
@@ -42,8 +45,10 @@ const TribesListPage: React.FC<TribesListPageProps> = ({ userId, onRefreshUser }
       setCreating(false);
       await fetchTribes();
       onRefreshUser();
+      showSuccess('Tribe founded', 'The camp grows stronger.');
     } catch (e: any) {
-      alert(`Error: ${e.message}`);
+      const message = e instanceof Error ? e.message : 'Failed to create tribe.';
+      showError('Could not found tribe', message);
     }
   };
 

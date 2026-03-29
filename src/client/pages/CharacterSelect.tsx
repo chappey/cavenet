@@ -1,14 +1,16 @@
 import React from 'react';
 import { useMemo, useState } from 'react';
 import { apiFetch } from '../lib/api';
+import { useToast } from '../components/ui/toast';
+import type { CharacterDraftResponse, UserSummary } from 'src/shared/contracts';
 
 interface CharacterSelectProps {
-  users: any[];
+  users: UserSummary[];
   currentUserId: string | null;
   mode: 'select' | 'manage';
   loading?: boolean;
   onSelect: (id: string) => void;
-  onCreateCharacter: (input: { username: string; bio: string; avatar?: string }) => Promise<void>;
+  onCreateCharacter: (input: { username: string; bio: string; avatar?: string }) => Promise<UserSummary>;
   onDeleteCharacter: (id: string) => Promise<void>;
   onOpenManage: () => void;
   onClose: () => void;
@@ -25,6 +27,7 @@ const CharacterSelect: React.FC<CharacterSelectProps> = ({
   onOpenManage,
   onClose,
 }) => {
+  const { error: showError, info: showInfo } = useToast();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newBio, setNewBio] = useState('');
@@ -45,6 +48,7 @@ const CharacterSelect: React.FC<CharacterSelectProps> = ({
       setNewName('');
       setNewBio('');
       setCreating(false);
+      showInfo('Character created', 'Your cave person is ready.');
     } finally {
       setSaving(false);
     }
@@ -54,10 +58,13 @@ const CharacterSelect: React.FC<CharacterSelectProps> = ({
     if (generatingDraft) return;
     setGeneratingDraft(true);
     try {
-      const draft = await apiFetch<{ username?: string; bio?: string }>('/ai/character-draft', { method: 'POST', body: '{}' });
+      const draft = await apiFetch<CharacterDraftResponse>('/ai/character-draft', { method: 'POST', body: '{}' });
       setNewName(draft.username ?? '');
       setNewBio(draft.bio ?? '');
       setCreating(true);
+    } catch (e: any) {
+      const message = e instanceof Error ? e.message : 'Failed to generate a draft.';
+      showError('Draft generation failed', message);
     } finally {
       setGeneratingDraft(false);
     }

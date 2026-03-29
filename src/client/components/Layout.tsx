@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
+import type { UserSummary } from 'src/shared/contracts';
 
 // Time simulation constants (must match server's time.ts)
 const TIME_SCALE = 60; // 1 real minute = 1 simulated hour
@@ -36,8 +37,8 @@ const getCaveTime = () => {
 };
 
 interface LayoutProps {
-  user: any;
-  users: any[];
+  user: UserSummary | null;
+  users: UserSummary[];
   onSwitchUser: (id: string) => void;
   onManageCharacters: () => void;
 }

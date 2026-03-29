@@ -2,10 +2,19 @@ import { Elysia, t } from 'elysia';
 import { db } from './db';
 import { users, threads, replies, likes, tribes, userTribes, userThreadStats, userActivity, rewardEvents } from './db/schema';
 import { eq, desc, sql, and, inArray } from 'drizzle-orm';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { simulatedDaysBetween, TIME_SCALE, getSimulatedNow } from './time';
 import { generateCharacterDraft, generateThreadDraft, generateThreadReplies, isGoogleGenAIConfigured, pickReplyMood } from './ai';
-import { buildCharacterAbbreviation } from './logic';
+import { AppError, badRequest, conflict, notFound, forbidden } from './http';
+import {
+  buildTribeAbbreviation,
+  getHuntClaimReward,
+  getThreadPostCost,
+  normalizeCreateCharacterInput,
+  normalizeCreateReplyInput,
+  normalizeCreateThreadInput,
+  normalizeCreateTribeInput,
+} from './flows';
 
 // ── Constants ──
 
@@ -928,6 +937,25 @@ const sortFeedThreads = (threadsToSort: any[], sort: string) => {
 // ── App ──
 
 const app = new Elysia()
+  .derive(({ request }) => ({
+    requestId: randomUUID(),
+    requestStartedAt: Date.now(),
+    requestPath: new URL(request.url).pathname,
+  }))
+  .onAfterHandle(({ request, requestId, requestStartedAt, requestPath, set }) => {
+    const status = typeof set.status === 'number' ? set.status : 200;
+    const durationMs = Date.now() - requestStartedAt;
+    console.info(`[http] ${request.method} ${requestPath} -> ${status} ${durationMs}ms id=${requestId}`);
+  })
+  .onError(({ request, requestId, requestPath, error, set }) => {
+    const appError = error instanceof AppError ? error : null;
+    const status = appError?.status ?? 500;
+    const code = appError?.code ?? 'INTERNAL_ERROR';
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    set.status = status;
+    console.error(`[http] ERROR ${request.method} ${requestPath} -> ${status} code=${code} id=${requestId} ${message}`);
+    return { message, code, requestId };
+  })
   // Read user from X-User-Id header (no auth — just user selection)
   .derive(async ({ request }) => {
     const userId = request.headers.get('x-user-id');
@@ -946,6 +974,8 @@ const app = new Elysia()
 
   .group('/api', (app) => app
 
+    .get('/health', () => ({ ok: true, time: new Date().toISOString(), timeScale: TIME_SCALE }))
+
     // ── Users ──
 
     .get('/users', async () => {
@@ -962,13 +992,14 @@ const app = new Elysia()
     })
 
     .post('/users', async ({ body }) => {
-      const username = body.username.trim();
-      if (!username) throw new Error('Character name is required');
+      const normalized = normalizeCreateCharacterInput(body);
+      const username = normalized.username;
+      if (!username) throw badRequest('Character name is required', 'USERNAME_REQUIRED');
 
       const [created] = await db.insert(users).values({
         username,
-        bio: body.bio ?? '',
-        avatar: body.avatar ?? '',
+        bio: normalized.bio,
+        avatar: normalized.avatar,
         isPlayerCharacter: true,
       }).returning();
 
@@ -991,7 +1022,7 @@ const app = new Elysia()
       const user = await db.query.users.findFirst({
         where: eq(users.id, params.id)
       });
-      if (!user) throw new Error('User not found');
+      if (!user) throw notFound('User not found', 'USER_NOT_FOUND');
 
       const userThreads = await db.query.threads.findMany({
         where: eq(threads.creatorId, params.id),
@@ -1017,8 +1048,8 @@ const app = new Elysia()
 
     // PATCH /api/users/:id/bio
     .patch('/users/:id/bio', async ({ params, body, userId }) => {
-      if (!userId) throw new Error('No user selected');
-      if (params.id !== userId) throw new Error('Can only edit your own bio');
+      if (!userId) throw badRequest('No user selected', 'NO_USER_SELECTED');
+      if (params.id !== userId) throw forbidden('Can only edit your own bio', 'BIO_FORBIDDEN');
 
       await db.update(users)
         .set({ bio: body.bio })
@@ -1033,8 +1064,8 @@ const app = new Elysia()
 
     .delete('/users/:id', async ({ params }) => {
       const target = await db.query.users.findFirst({ where: eq(users.id, params.id) });
-      if (!target) throw new Error('Character not found');
-      if (!target.isPlayerCharacter) throw new Error('Only player-created characters can be removed');
+      if (!target) throw notFound('Character not found', 'CHARACTER_NOT_FOUND');
+      if (!target.isPlayerCharacter) throw forbidden('Only player-created characters can be removed', 'NPC_DELETE_FORBIDDEN');
 
       await db.delete(users).where(eq(users.id, params.id));
       return { status: 'deleted' as const };
@@ -1162,12 +1193,13 @@ const app = new Elysia()
     // ── Threads ──
 
     .post('/threads', async ({ body, userId }) => {
-      if (!userId) throw new Error('No user selected');
-      const cost = POST_COST[body.type as keyof typeof POST_COST] ?? POST_COST.text;
+      if (!userId) throw badRequest('No user selected', 'NO_USER_SELECTED');
+      const normalized = normalizeCreateThreadInput(body);
+      const cost = getThreadPostCost(normalized.type);
 
       const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
-      if (!user) throw new Error('User not found');
-      if (user.food < cost) throw new Error('Not enough food');
+      if (!user) throw notFound('User not found', 'USER_NOT_FOUND');
+      if (user.food < cost) throw badRequest('Not enough food', 'INSUFFICIENT_FOOD');
 
       const thread = await db.transaction(async (tx) => {
         await tx.update(users)
@@ -1176,11 +1208,11 @@ const app = new Elysia()
 
         const [newThread] = await tx.insert(threads).values({
           creatorId: userId,
-          title: body.title,
-          type: body.type as any,
-          content: body.content,
-          imageUrl: body.imageUrl,
-          tribeId: body.tribeId,
+          title: normalized.title,
+          type: normalized.type as any,
+          content: normalized.content,
+          imageUrl: normalized.imageUrl,
+          tribeId: normalized.tribeId,
         }).returning();
 
         await markUserActive(tx, userId);
@@ -1208,7 +1240,7 @@ const app = new Elysia()
       const thread = await db.query.threads.findFirst({
         where: eq(threads.id, params.id)
       });
-      if (!thread) throw new Error('Thread not found');
+      if (!thread) throw notFound('Thread not found', 'THREAD_NOT_FOUND');
 
       // Get creator username
       const creator = await db.query.users.findFirst({ where: eq(users.id, thread.creatorId) });
@@ -1251,17 +1283,17 @@ const app = new Elysia()
     // ── Replies ──
 
     .post('/threads/:id/replies', async ({ params, body, userId }) => {
-      if (!userId) throw new Error('No user selected');
+      if (!userId) throw badRequest('No user selected', 'NO_USER_SELECTED');
       const threadId = params.id;
 
       const result = await db.transaction(async (tx) => {
         const thread = await tx.query.threads.findFirst({ where: eq(threads.id, threadId) });
-        if (!thread) throw new Error('Thread not found');
+        if (!thread) throw notFound('Thread not found', 'THREAD_NOT_FOUND');
 
 		const reply = await insertThreadReply(tx, {
 			threadId,
 			creatorId: userId,
-			content: body.content,
+      content: normalizeCreateReplyInput(body).content,
 		});
 		const qualityScore = scoreThreadQuality(thread.title ?? null, thread.content ?? '');
 
@@ -1294,7 +1326,7 @@ const app = new Elysia()
     // ── Likes ──
 
     .post('/replies/:id/like', async ({ params, userId }) => {
-      if (!userId) throw new Error('No user selected');
+      if (!userId) throw badRequest('No user selected', 'NO_USER_SELECTED');
       const replyId = params.id;
 
       const outcome = await db.transaction(async (tx) => {
@@ -1309,13 +1341,13 @@ const app = new Elysia()
     // ── Games ──
 
     .post('/games/hunt/claim', async ({ body, userId }) => {
-      if (!userId) throw new Error('No user selected');
+      if (!userId) throw badRequest('No user selected', 'NO_USER_SELECTED');
 
       const runId = String(body.runId ?? '').trim();
-      if (!runId) throw new Error('Missing run id');
+      if (!runId) throw badRequest('Missing run id', 'RUN_ID_REQUIRED');
 
       const score = clamp(Math.floor(Number(body.score ?? 0)), 0, 50);
-      const fireReward = score <= 0 ? 0 : Math.min(12, Math.max(1, score));
+      const fireReward = getHuntClaimReward(score);
 
       const outcome = await db.transaction(async (tx) => {
         const event = await tx.insert(rewardEvents)
@@ -1430,7 +1462,8 @@ const app = new Elysia()
       if (user.food < TRIBE_CREATION_COST) throw new Error('Not enough food to create tribe');
 
       // Auto-generate abbreviation from name if not provided
-      const abbr = body.abbreviation?.trim() || buildCharacterAbbreviation(body.name);
+      const normalized = normalizeCreateTribeInput(body);
+      const abbr = buildTribeAbbreviation(normalized.name, normalized.abbreviation);
 
       const tribe = await db.transaction(async (tx) => {
         await tx.update(users)
@@ -1438,9 +1471,9 @@ const app = new Elysia()
           .where(eq(users.id, userId));
 
         const [newTribe] = await tx.insert(tribes).values({
-          name: body.name,
+          name: normalized.name,
           abbreviation: abbr,
-          description: body.description,
+          description: normalized.description,
           creatorId: userId,
         }).returning();
 
@@ -1464,10 +1497,10 @@ const app = new Elysia()
     })
 
     .post('/tribes/:id/join', async ({ params, userId }) => {
-      if (!userId) throw new Error('No user selected');
+      if (!userId) throw badRequest('No user selected', 'NO_USER_SELECTED');
 
       const tribe = await db.query.tribes.findFirst({ where: eq(tribes.id, params.id) });
-      if (!tribe) throw new Error('Tribe not found');
+      if (!tribe) throw notFound('Tribe not found', 'TRIBE_NOT_FOUND');
 
       await db.insert(userTribes)
         .values({ userId, tribeId: params.id })
@@ -1477,7 +1510,7 @@ const app = new Elysia()
     })
 
     .post('/tribes/:id/leave', async ({ params, userId }) => {
-      if (!userId) throw new Error('No user selected');
+      if (!userId) throw badRequest('No user selected', 'NO_USER_SELECTED');
 
       await db.delete(userTribes)
         .where(and(eq(userTribes.userId, userId), eq(userTribes.tribeId, params.id)));
@@ -1488,13 +1521,13 @@ const app = new Elysia()
     // ── Recovery ──
 
     .post('/recovery', async ({ userId }) => {
-      if (!userId) throw new Error('No user selected');
+      if (!userId) throw badRequest('No user selected', 'NO_USER_SELECTED');
 
       const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
-      if (!user) throw new Error('User not found');
+      if (!user) throw notFound('User not found', 'USER_NOT_FOUND');
 
       if (user.food > 0 || user.fire > 0) {
-        throw new Error('Not eligible for recovery');
+        throw conflict('Not eligible for recovery', 'RECOVERY_NOT_ELIGIBLE');
       }
 
       const reward = Math.random() < 0.5 ? 2 : 3;

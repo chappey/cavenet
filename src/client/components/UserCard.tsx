@@ -1,14 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import type { UserSummary } from 'src/shared/contracts';
 
 interface UserCardProps {
-  user: {
-    id: string;
-    username: string;
-    avatar?: string;
-    fire?: number;
-    food?: number;
-  };
+  user: UserSummary;
 }
 
 const UserCard: React.FC<UserCardProps> = ({ user }) => {

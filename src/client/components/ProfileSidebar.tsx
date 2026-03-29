@@ -3,9 +3,9 @@ import { getFireGlowStyle } from './FireGlow';
 
 interface ProfileSidebarProps {
   name: string;
-  abbreviation?: string;
-  bio?: string;
-  avatar?: string;
+  abbreviation?: string | null;
+  bio?: string | null;
+  avatar?: string | null;
   fire: number;
   food: number;
   type?: 'user' | 'tribe';

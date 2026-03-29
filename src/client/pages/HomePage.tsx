@@ -2,16 +2,23 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import ThreadCard from '../components/ThreadCard';
 import Composer from '../components/Composer';
+import type { FeedSort, ThreadSummary } from 'src/shared/contracts';
 
 interface HomePageProps {
-  feed: any[];
+  feed: ThreadSummary[];
   onPost: (content: string, title?: string) => Promise<void>;
-  onSortChange: (sort: string) => void;
-  currentSort: string;
+  onSortChange: (sort: FeedSort) => void;
+  currentSort: FeedSort;
   userId: string | null;
 }
 
 const HomePage: React.FC<HomePageProps> = ({ feed, onPost, onSortChange, currentSort, userId }) => {
+  const sortOptions = [
+    { key: 'newest', label: '🕐 Newest' },
+    { key: 'active', label: '💬 Active' },
+    { key: 'hottest', label: '🔥 Hottest' },
+  ] as const;
+
   return (
     <div className="content-view">
       <div className="content-header">
@@ -34,11 +41,7 @@ const HomePage: React.FC<HomePageProps> = ({ feed, onPost, onSortChange, current
       {/* Sort controls */}
       <div className="sort-controls">
         <span className="sort-label">Sort by:</span>
-        {[
-          { key: 'newest', label: '🕐 Newest' },
-          { key: 'active', label: '💬 Active' },
-          { key: 'hottest', label: '🔥 Hottest' },
-        ].map(opt => (
+        {sortOptions.map(opt => (
           <button
             key={opt.key}
             className={`sort-btn ${currentSort === opt.key ? 'active' : ''}`}

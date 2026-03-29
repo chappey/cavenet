@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import type { UserSummary } from 'src/shared/contracts';
 
 interface LeaderboardPageProps {
-	users: any[];
+	users: UserSummary[];
 	currentUserId: string | null;
 }
 

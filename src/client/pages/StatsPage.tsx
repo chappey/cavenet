@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { apiFetch } from '../lib/api';
 import { ChartContainer, ChartTooltipContent, ResponsiveContainer, Tooltip, ChartConfig } from '../components/ui/chart';
+import type { StatsResponse } from 'src/shared/contracts';
 
 const activityConfig: ChartConfig = {
   fire: { label: 'Fire', color: 'var(--color-fire-hot)' },
@@ -42,7 +43,7 @@ const summaryCards = [
 const resourcePieColors = ['var(--color-fire-hot)', '#ff6b6b'];
 
 const StatsPage: React.FC = () => {
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,7 +51,7 @@ const StatsPage: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await apiFetch<any>('/stats');
+      const data = await apiFetch<StatsResponse>('/stats');
       setStats(data);
     } catch (e) {
       console.error('Failed to load stats', e);
@@ -174,7 +175,7 @@ const StatsPage: React.FC = () => {
           <p>Sorted by fire, then posts and replies.</p>
         </div>
         <div className="stats-leaderboard-list">
-          {stats.topUsers.map((user: any, index: number) => (
+          {stats.topUsers.map((user, index: number) => (
             <Link key={user.id} to={`/profile/${user.id}`} className="stats-leaderboard-row">
               <div className="stats-rank">#{index + 1}</div>
               <div className="stats-user-main">

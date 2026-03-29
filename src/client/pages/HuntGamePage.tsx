@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../lib/api';
+import type { HuntClaimResponse } from 'src/shared/contracts';
 
 interface HuntGamePageProps {
   userId: string | null;
@@ -64,7 +65,7 @@ const HuntGamePage: React.FC<HuntGamePageProps> = ({ userId, onRefreshUser }) =>
       claimedRef.current = true;
       setClaiming(true);
       try {
-        const result = await apiFetch<{ status: 'claimed' | 'already_claimed'; fireReward: number }>('/games/hunt/claim', {
+        const result = await apiFetch<HuntClaimResponse>('/games/hunt/claim', {
           method: 'POST',
           body: JSON.stringify({
             runId: runIdRef.current,

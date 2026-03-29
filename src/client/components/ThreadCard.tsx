@@ -1,15 +1,16 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { getFireGlowStyle } from './FireGlow';
+import type { ThreadSummary } from 'src/shared/contracts';
 
 interface ThreadCardProps {
-  thread: any;
+  thread: ThreadSummary;
   onLike?: (replyId: string) => void;
   onReply?: (threadId: string) => void;
   compact?: boolean;
 }
 
-const timeAgo = (date: any): string => {
+const timeAgo = (date: string | Date): string => {
   const d = date instanceof Date ? date : new Date(date);
   const seconds = Math.floor((Date.now() - d.getTime()) / 1000);
   if (seconds < 60) return 'just now';
@@ -23,6 +24,7 @@ const timeAgo = (date: any): string => {
 
 const ThreadCard: React.FC<ThreadCardProps> = ({ thread, compact = false }) => {
   const fireLevel = thread.fireGenerated ?? 0;
+  const replyCount = thread.replyCount ?? 0;
 
   return (
     <Link to={`/threads/${thread.id}`} className="thread-card-link">
@@ -83,9 +85,9 @@ const ThreadCard: React.FC<ThreadCardProps> = ({ thread, compact = false }) => {
         </div>
 
         {/* Recent replies preview */}
-        {!compact && thread.recentReplies?.length > 0 && (
+        {!compact && (thread.recentReplies ?? []).length > 0 && (
           <div className="thread-card-replies">
-            {thread.recentReplies.slice(0, 3).map((reply: any) => (
+            {(thread.recentReplies ?? []).slice(0, 3).map((reply) => (
               <div key={reply.id} className="thread-card-reply-preview">
                 <span className="reply-author">{reply.creatorUsername}</span>
                 <span className="reply-text">
@@ -95,9 +97,9 @@ const ThreadCard: React.FC<ThreadCardProps> = ({ thread, compact = false }) => {
                 </span>
               </div>
             ))}
-            {(thread.replyCount ?? 0) > 3 && (
+            {replyCount > 3 && (
               <div className="thread-card-more">
-                +{thread.replyCount - 3} more replies
+                +{replyCount - 3} more replies
               </div>
             )}
           </div>
