@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { getFireGlowStyle } from './FireGlow';
 
 interface ProfileSidebarProps {
   name: string;
+  abbreviation?: string;
   bio?: string;
   avatar?: string;
   fire: number;
@@ -10,10 +11,14 @@ interface ProfileSidebarProps {
   type?: 'user' | 'tribe';
   memberCount?: number;
   extra?: React.ReactNode;
+  /** Allow editing the bio (only for own profile) */
+  editable?: boolean;
+  onUpdateBio?: (bio: string) => Promise<void>;
 }
 
 const ProfileSidebar: React.FC<ProfileSidebarProps> = ({
   name,
+  abbreviation,
   bio,
   avatar,
   fire,
@@ -21,9 +26,29 @@ const ProfileSidebar: React.FC<ProfileSidebarProps> = ({
   type = 'user',
   memberCount,
   extra,
+  editable = false,
+  onUpdateBio,
 }) => {
-  const initial = name[0]?.toUpperCase() ?? '?';
-  const glowStyle = getFireGlowStyle(fire);
+  const initial = abbreviation || name[0]?.toUpperCase() || '?';
+  const [editing, setEditing] = useState(false);
+  const [editBio, setEditBio] = useState(bio ?? '');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!onUpdateBio || saving) return;
+    setSaving(true);
+    try {
+      await onUpdateBio(editBio);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setEditBio(bio ?? '');
+    setEditing(false);
+  };
 
   return (
     <aside className="profile-sidebar">
@@ -64,13 +89,37 @@ const ProfileSidebar: React.FC<ProfileSidebarProps> = ({
         )}
       </div>
 
-      {/* Bio */}
-      {bio && (
-        <div className="sidebar-bio">
+      {/* Bio — view or edit mode */}
+      <div className="sidebar-bio">
+        <div className="sidebar-bio-header">
           <h4>About</h4>
-          <p>{bio}</p>
+          {editable && !editing && (
+            <button className="bio-edit-btn" onClick={() => { setEditBio(bio ?? ''); setEditing(true); }}>
+              ✏️ Edit
+            </button>
+          )}
         </div>
-      )}
+
+        {editing ? (
+          <div className="bio-edit-form">
+            <textarea
+              className="bio-edit-textarea"
+              value={editBio}
+              onChange={e => setEditBio(e.target.value)}
+              rows={3}
+              placeholder="Tell the tribe about yourself..."
+            />
+            <div className="bio-edit-actions">
+              <button className="btn-carve" onClick={handleSave} disabled={saving}>
+                {saving ? '...' : 'Save'}
+              </button>
+              <button className="btn-cancel" onClick={handleCancel}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <p>{bio || (editable ? 'Tell the tribe about yourself...' : 'No bio yet.')}</p>
+        )}
+      </div>
 
       {extra}
     </aside>

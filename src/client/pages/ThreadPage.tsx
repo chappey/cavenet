@@ -46,21 +46,30 @@ const ThreadPage: React.FC<ThreadPageProps> = ({ userId, onRefreshUser }) => {
 
   const handleReply = async (content: string) => {
     if (!id) return;
-    await apiFetch(`/threads/${id}/replies`, {
-      method: 'POST',
-      body: JSON.stringify({ content }),
-    });
-    await fetchThread();
-    onRefreshUser();
+    try {
+      await apiFetch(`/threads/${id}/replies`, {
+        method: 'POST',
+        body: JSON.stringify({ content }),
+      });
+      await fetchThread();
+      onRefreshUser();
+    } catch (e: any) {
+      alert(`Failed to reply: ${e.message}`);
+      throw e;
+    }
   };
 
   const handleLike = async (replyId: string) => {
-    await apiFetch(`/replies/${replyId}/like`, { method: 'POST' });
-    await fetchThread();
-    onRefreshUser();
+    try {
+      await apiFetch(`/replies/${replyId}/like`, { method: 'POST' });
+      await fetchThread();
+      onRefreshUser();
+    } catch (e: any) {
+      alert(`Failed to like: ${e.message}`);
+    }
   };
 
-  if (loading) return <div className="loading-state">Loading thread...</div>;
+  if (loading && !thread) return <div className="loading-state">Loading thread...</div>;
   if (!thread) return <div className="error-state">Thread not found</div>;
 
   const threadReplies = inverted ? [...(thread.replies ?? [])].reverse() : thread.replies ?? [];
@@ -92,7 +101,7 @@ const ThreadPage: React.FC<ThreadPageProps> = ({ userId, onRefreshUser }) => {
 
       {/* Replies */}
       <div className="thread-replies-header">
-        <h3>Echoes ({thread.replies?.length ?? 0})</h3>
+        <h3>Replies ({thread.replies?.length ?? 0})</h3>
         <button
           className="sort-btn"
           onClick={() => setInverted(!inverted)}
@@ -146,7 +155,7 @@ const ThreadPage: React.FC<ThreadPageProps> = ({ userId, onRefreshUser }) => {
         <div className="thread-composer">
           <Composer
             onSubmit={handleReply}
-            placeholder="Add your echo to this thread..."
+            placeholder="Add your reply to this thread..."
             cost={0}
             costLabel="Free"
           />

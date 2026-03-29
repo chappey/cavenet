@@ -7,19 +7,20 @@ import TribeCard from '../components/TribeCard';
 import Composer from '../components/Composer';
 
 interface ProfilePageProps {
-  currentUser: any;
+  userId: string | null;
   onRefreshUser: () => void;
-  onPost: (content: string) => Promise<void>;
+  onPost: (content: string, title?: string) => Promise<void>;
 }
 
-const ProfilePage: React.FC<ProfilePageProps> = ({ currentUser, onRefreshUser, onPost }) => {
+const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onRefreshUser, onPost }) => {
   const { id } = useParams<{ id: string }>();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'threads' | 'tribes'>('threads');
 
-  const profileId = id || currentUser?.id;
-  const isOwnProfile = !id || id === currentUser?.id;
+  // Use route param if present, otherwise use logged-in user
+  const profileId = id || userId;
+  const isOwnProfile = !id || id === userId;
 
   const fetchProfile = async () => {
     if (!profileId) return;
@@ -34,11 +35,26 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ currentUser, onRefreshUser, o
     }
   };
 
+  // Re-fetch when profileId changes OR when userId changes (catches the race condition)
   useEffect(() => {
     fetchProfile();
-  }, [profileId]);
+  }, [profileId, userId]);
 
-  if (loading) return <div className="loading-state">Loading cave...</div>;
+  const handleUpdateBio = async (bio: string) => {
+    if (!profileId) return;
+    try {
+      await apiFetch(`/users/${profileId}/bio`, {
+        method: 'PATCH',
+        body: JSON.stringify({ bio }),
+      });
+      await fetchProfile();
+      onRefreshUser();
+    } catch (e: any) {
+      alert(`Failed to update bio: ${e.message}`);
+    }
+  };
+
+  if (loading && !profile) return <div className="loading-state">Loading cave...</div>;
   if (!profile) return <div className="error-state">Caveman not found</div>;
 
   return (
@@ -50,6 +66,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ currentUser, onRefreshUser, o
         avatar={profile.avatar}
         fire={profile.fire}
         food={profile.food}
+        editable={isOwnProfile}
+        onUpdateBio={handleUpdateBio}
       />
 
       {/* Main Content */}
@@ -60,7 +78,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ currentUser, onRefreshUser, o
             className={`tab ${activeTab === 'threads' ? 'active' : ''}`}
             onClick={() => setActiveTab('threads')}
           >
-            🪨 Carvings
+            🪨 Posts
           </button>
           <button
             className={`tab ${activeTab === 'tribes' ? 'active' : ''}`}
@@ -75,13 +93,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ currentUser, onRefreshUser, o
           <div className="tab-content">
             {isOwnProfile && (
               <Composer
-                onSubmit={async (content) => {
-                  await onPost(content);
-                  fetchProfile();
+                onSubmit={async (content, title) => {
+                  await onPost(content, title);
+                  await fetchProfile();
                 }}
                 placeholder="Carve something on your cave wall..."
                 cost={2}
                 costLabel="🍖 Food"
+                showTitle
               />
             )}
             <div className="feed">
@@ -89,7 +108,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ currentUser, onRefreshUser, o
                 <ThreadCard key={thread.id} thread={thread} />
               ))}
               {(!profile.threads || profile.threads.length === 0) && (
-                <div className="feed-empty">This caveman has not carved yet.</div>
+                <div className="feed-empty">This caveman has not posted yet.</div>
               )}
             </div>
           </div>

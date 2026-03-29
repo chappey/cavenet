@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import ThreadCard from '../components/ThreadCard';
 import Composer from '../components/Composer';
 
 interface HomePageProps {
   feed: any[];
-  onPost: (content: string) => Promise<void>;
+  onPost: (content: string, title?: string) => Promise<void>;
   onSortChange: (sort: string) => void;
   currentSort: string;
   userId: string | null;
@@ -15,7 +15,7 @@ const HomePage: React.FC<HomePageProps> = ({ feed, onPost, onSortChange, current
     <div className="content-view">
       <div className="content-header">
         <h1>🏔️ Cave Wall</h1>
-        <p className="content-subtitle">All grunts from the land</p>
+        <p className="content-subtitle">All posts from the land</p>
       </div>
 
       {/* Sort controls */}
@@ -40,9 +40,10 @@ const HomePage: React.FC<HomePageProps> = ({ feed, onPost, onSortChange, current
       {userId && (
         <Composer
           onSubmit={onPost}
-          placeholder="Grunt your thoughts into the cave wall..."
+          placeholder="Write your post on the cave wall..."
           cost={2}
           costLabel="🍖 Food"
+          showTitle
         />
       )}
 
@@ -53,7 +54,7 @@ const HomePage: React.FC<HomePageProps> = ({ feed, onPost, onSortChange, current
         ))}
         {feed.length === 0 && (
           <div className="feed-empty">
-            No grunts yet. Be the first to carve into the wall.
+            No posts yet. Be the first to carve into the wall.
           </div>
         )}
       </div>

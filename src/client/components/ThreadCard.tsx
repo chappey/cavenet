@@ -41,6 +41,22 @@ const ThreadCard: React.FC<ThreadCardProps> = ({ thread, compact = false }) => {
               <span className="avatar-initial">{(thread.creatorUsername ?? '?')[0].toUpperCase()}</span>
               <span>{thread.creatorUsername ?? 'Unknown'}</span>
             </Link>
+            {/* Tribe badge */}
+            {thread.tribeId && (() => {
+              const raw = thread.tribeAbbreviation;
+              const valid = raw && raw.length <= 5 && raw.toLowerCase() !== 'abbreviation';
+              const label = valid ? raw : (thread.tribeName?.[0]?.toUpperCase() || null);
+              return label ? (
+                <Link
+                  to={`/tribes/${thread.tribeId}`}
+                  className="tribe-badge"
+                  onClick={e => e.stopPropagation()}
+                  title={thread.tribeName ?? 'Tribe'}
+                >
+                  {label}
+                </Link>
+              ) : null;
+            })()}
             <span className="thread-card-time">{timeAgo(thread.createdAt)}</span>
           </div>
           <div className="thread-card-stats">
@@ -64,7 +80,6 @@ const ThreadCard: React.FC<ThreadCardProps> = ({ thread, compact = false }) => {
         <div className="thread-card-footer">
           <span title="Replies">💬 {thread.replyCount ?? 0}</span>
           <span title="Unique posters">👥 {thread.uniquePosters ?? 0}</span>
-          {thread.tribeId && <span className="thread-card-tribe">🏔️ Tribe</span>}
         </div>
 
         {/* Recent replies preview */}

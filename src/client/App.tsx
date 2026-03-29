@@ -17,7 +17,6 @@ function App() {
   const [currentSort, setCurrentSort] = useState('newest');
   const [loading, setLoading] = useState(true);
 
-  // Fetch all available users (for switcher + character select)
   const fetchUsers = useCallback(async () => {
     try {
       const data = await apiFetch('/users');
@@ -27,7 +26,6 @@ function App() {
     }
   }, []);
 
-  // Fetch current user data
   const fetchMe = useCallback(async () => {
     if (!userId) { setUser(null); return; }
     try {
@@ -38,7 +36,6 @@ function App() {
     }
   }, [userId]);
 
-  // Fetch feed
   const fetchFeed = useCallback(async (sort?: string) => {
     try {
       const s = sort ?? currentSort;
@@ -49,26 +46,23 @@ function App() {
     }
   }, [currentSort]);
 
-  // Initial load
+  // Initial load — fetch users first, then me + feed in parallel
   useEffect(() => {
     const init = async () => {
       setLoading(true);
       await fetchUsers();
-      if (userId) {
-        await Promise.all([fetchMe(), fetchFeed()]);
-      }
       setLoading(false);
     };
     init();
   }, []);
 
-  // When user changes
+  // When userId changes (on select or switch), fetch me + feed
   useEffect(() => {
     if (userId) {
-      fetchMe();
-      fetchFeed();
+      Promise.all([fetchMe(), fetchFeed()]);
     } else {
       setUser(null);
+      setFeed([]);
     }
   }, [userId]);
 
@@ -77,12 +71,21 @@ function App() {
     setUserId(id);
   };
 
-  const handlePost = async (content: string) => {
-    await apiFetch('/threads', {
-      method: 'POST',
-      body: JSON.stringify({ type: 'text', content, title: content.substring(0, 40) }),
-    });
-    await Promise.all([fetchFeed(), fetchMe(), fetchUsers()]);
+  const handlePost = async (content: string, title?: string) => {
+    try {
+      await apiFetch('/threads', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'text',
+          content,
+          title: title || content.substring(0, 40),
+        }),
+      });
+      await Promise.all([fetchFeed(), fetchMe(), fetchUsers()]);
+    } catch (e: any) {
+      alert(`Failed to post: ${e.message}`);
+      throw e; // Re-throw so Composer knows it failed
+    }
   };
 
   const handleSortChange = async (sort: string) => {
@@ -105,7 +108,7 @@ function App() {
   };
 
   // Show character select if no user chosen
-  if (!userId || (!user && !loading)) {
+  if (!userId) {
     if (allUsers.length === 0 && loading) {
       return <div className="loading-state">Loading Cavenet...</div>;
     }
@@ -140,10 +143,10 @@ function App() {
           <ThreadPage userId={userId} onRefreshUser={refreshUser} />
         } />
         <Route path="profile" element={
-          <ProfilePage currentUser={user} onRefreshUser={refreshUser} onPost={handlePost} />
+          <ProfilePage userId={userId} onRefreshUser={refreshUser} onPost={handlePost} />
         } />
         <Route path="profile/:id" element={
-          <ProfilePage currentUser={user} onRefreshUser={refreshUser} onPost={handlePost} />
+          <ProfilePage userId={userId} onRefreshUser={refreshUser} onPost={handlePost} />
         } />
         <Route path="tribes" element={
           <TribesListPage userId={userId} onRefreshUser={refreshUser} />

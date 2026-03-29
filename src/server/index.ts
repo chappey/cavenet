@@ -3,6 +3,7 @@ import { db } from './db';
 import { users, threads, replies, likes, tribes, userTribes, userThreadStats, userActivity, rewardEvents } from './db/schema';
 import { eq, desc, sql, and, inArray } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
+import { simulatedDaysBetween, TIME_SCALE } from './time';
 
 // ── Constants ──
 
@@ -83,11 +84,13 @@ const applyDailyDecayIfNeeded = async (tx: typeof db, userId: string) => {
 
   const now = new Date();
   const lastActive = user.lastActiveAt ?? now;
-  const inactiveDays = daysBetweenUtc(new Date(lastActive), now);
+  // Use simulated time so decay is observable during testing
+  const inactiveDays = simulatedDaysBetween(new Date(lastActive), now);
 
   if (inactiveDays <= 0) return;
 
   const decay = inactiveDays * FIRE_DECAY_PER_DAY;
+  console.log(`[decay] ${user.username}: ${inactiveDays} sim-days inactive → -${decay} fire (scale=${TIME_SCALE}x)`);
   await tx.update(users)
     .set({
       fire: sql`MAX(${users.fire} - ${decay}, 0)`
@@ -147,6 +150,18 @@ const enrichThreads = async (threadRows: any[]) => {
     }
   }
 
+  // Get tribe info for threads that belong to a tribe
+  const tribeIds = [...new Set(threadRows.filter(t => t.tribeId).map(t => t.tribeId))];
+  let tribeMap: Record<string, { name: string; abbreviation: string }> = {};
+  if (tribeIds.length > 0) {
+    const tribeRows = await db.select({
+      id: tribes.id,
+      name: tribes.name,
+      abbreviation: tribes.abbreviation,
+    }).from(tribes).where(inArray(tribes.id, tribeIds));
+    tribeMap = Object.fromEntries(tribeRows.map(t => [t.id, { name: t.name, abbreviation: t.abbreviation }]));
+  }
+
   return threadRows.map(t => ({
     ...t,
     creatorUsername: creatorMap[t.creatorId] ?? 'Unknown',
@@ -154,6 +169,8 @@ const enrichThreads = async (threadRows: any[]) => {
     uniquePosters: statMap[t.id]?.uniquePosters ?? 0,
     lastReplyAt: statMap[t.id]?.lastReplyAt ?? null,
     recentReplies: replyMap[t.id] ?? [],
+    tribeName: t.tribeId ? tribeMap[t.tribeId]?.name ?? null : null,
+    tribeAbbreviation: t.tribeId ? tribeMap[t.tribeId]?.abbreviation ?? null : null,
   }));
 };
 
@@ -164,9 +181,14 @@ const app = new Elysia()
   .derive(async ({ request }) => {
     const userId = request.headers.get('x-user-id');
     if (userId) {
-      await db.transaction(async (tx) => {
-        await applyDailyDecayIfNeeded(tx, userId);
-      });
+      try {
+        await db.transaction(async (tx) => {
+          await applyDailyDecayIfNeeded(tx, userId);
+        });
+      } catch (e) {
+        // Don't let decay errors crash the request
+        console.error('[derive] decay error:', e);
+      }
     }
     return { userId: userId ?? null };
   })
@@ -210,6 +232,7 @@ const app = new Elysia()
       const memberRows = await db.select({
         tribeId: userTribes.tribeId,
         tribeName: tribes.name,
+        tribeAbbreviation: tribes.abbreviation,
         tribeAvatar: tribes.avatar,
         tribeDescription: tribes.description,
       })
@@ -220,37 +243,41 @@ const app = new Elysia()
       return { ...user, threads: enriched, tribes: memberRows };
     })
 
+    // PATCH /api/users/:id/bio
+    .patch('/users/:id/bio', async ({ params, body, userId }) => {
+      if (!userId) throw new Error('No user selected');
+      if (params.id !== userId) throw new Error('Can only edit your own bio');
+
+      await db.update(users)
+        .set({ bio: body.bio })
+        .where(eq(users.id, userId));
+
+      return { status: 'updated' };
+    }, {
+      body: t.Object({
+        bio: t.String(),
+      })
+    })
+
     // ── Feed ──
 
     .get('/feed', async ({ query }) => {
       const sort = (query as any)?.sort ?? 'newest';
       const tribeId = (query as any)?.tribeId;
-
-      let orderClause;
-      switch (sort) {
-        case 'hottest':
-          orderClause = [desc(threads.fireGenerated)];
-          break;
-        case 'active':
-          // We'll sort by createdAt as fallback; enrichment adds lastReplyAt for client-side re-sort
-          orderClause = [desc(threads.createdAt)];
-          break;
-        default:
-          orderClause = [desc(threads.createdAt)];
-      }
+      const whereClause = tribeId ? eq(threads.tribeId, tribeId) : undefined;
 
       let rows;
-      if (tribeId) {
-        rows = await db.query.threads.findMany({
-          where: eq(threads.tribeId, tribeId),
-          orderBy: orderClause,
-          limit: 50
-        });
+      if (sort === 'hottest') {
+        rows = await db.select().from(threads)
+          .where(whereClause)
+          .orderBy(desc(threads.fireGenerated))
+          .limit(50);
       } else {
-        rows = await db.query.threads.findMany({
-          orderBy: orderClause,
-          limit: 50
-        });
+        // newest + active both start with createdAt desc
+        rows = await db.select().from(threads)
+          .where(whereClause)
+          .orderBy(desc(threads.createdAt))
+          .limit(50);
       }
 
       const enriched = await enrichThreads(rows);
@@ -260,7 +287,6 @@ const app = new Elysia()
         enriched.sort((a: any, b: any) => {
           const aTime = a.lastReplyAt ?? a.createdAt;
           const bTime = b.lastReplyAt ?? b.createdAt;
-          // Handle both Date objects and timestamps
           const aMs = aTime instanceof Date ? aTime.getTime() : Number(aTime);
           const bMs = bTime instanceof Date ? bTime.getTime() : Number(bTime);
           return bMs - aMs;
@@ -567,6 +593,10 @@ const app = new Elysia()
       if (!user) throw new Error('User not found');
       if (user.food < TRIBE_CREATION_COST) throw new Error('Not enough food to create tribe');
 
+      // Auto-generate abbreviation from name if not provided
+      const abbr = body.abbreviation
+        || body.name.split(/\s+/).map((w: string) => w[0]).join('').toUpperCase().slice(0, 4);
+
       const tribe = await db.transaction(async (tx) => {
         await tx.update(users)
           .set({ food: sql`${users.food} - ${TRIBE_CREATION_COST}` })
@@ -574,6 +604,7 @@ const app = new Elysia()
 
         const [newTribe] = await tx.insert(tribes).values({
           name: body.name,
+          abbreviation: abbr,
           description: body.description,
           creatorId: userId,
         }).returning();
@@ -592,6 +623,7 @@ const app = new Elysia()
     }, {
       body: t.Object({
         name: t.String(),
+        abbreviation: t.Optional(t.String()),
         description: t.Optional(t.String()),
       })
     })

@@ -14,6 +14,7 @@ export const users = sqliteTable('users', {
 export const tribes = sqliteTable('tribes', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: text('name').notNull().unique(),
+  abbreviation: text('abbreviation').notNull().default(''),
   description: text('description').default(''),
   avatar: text('avatar').default(''),
   creatorId: text('creator_id').references(() => users.id, { onDelete: 'set null' }),

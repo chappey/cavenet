@@ -1,5 +1,39 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
+
+// Time simulation constants (must match server's time.ts)
+const TIME_SCALE = 60; // 1 real minute = 1 simulated hour
+
+const SEASONS = ['❄️ Winter', '🌱 Spring', '☀️ Summer', '🍂 Autumn'];
+
+/** Calculate simulated cave time from a fixed epoch */
+const getCaveTime = () => {
+  // Use a fixed epoch so time is consistent across reloads
+  // Epoch: server start approximation — doesn't matter as long as it's fixed
+  const epoch = new Date('2026-01-01T00:00:00Z').getTime();
+  const realElapsed = Date.now() - epoch;
+  const simElapsed = realElapsed * TIME_SCALE;
+
+  const simDate = new Date(epoch + simElapsed);
+  const hour = simDate.getUTCHours();
+  const minute = simDate.getUTCMinutes();
+  const dayOfYear = Math.floor((simDate.getTime() - new Date(Date.UTC(simDate.getUTCFullYear(), 0, 1)).getTime()) / 86_400_000) + 1;
+  const month = simDate.getUTCMonth(); // 0-11
+  const seasonIndex = Math.floor(month / 3) % 4;
+  const year = simDate.getUTCFullYear();
+  const day = simDate.getUTCDate();
+
+  const isDay = hour >= 6 && hour < 20;
+  const timeIcon = isDay ? '☀️' : '🌙';
+
+  const pad = (n: number) => n.toString().padStart(2, '0');
+
+  return {
+    short: `${timeIcon} ${pad(hour)}:${pad(minute)}`,
+    full: `${pad(hour)}:${pad(minute)} · Day ${day} · ${SEASONS[seasonIndex]} · Year ${year}`,
+    hour, minute, day, season: SEASONS[seasonIndex], year, isDay,
+  };
+};
 
 interface LayoutProps {
   user: any;
@@ -11,7 +45,15 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ user, users, onSwitchUser, onRecovery }) => {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [caveTime, setCaveTime] = useState(getCaveTime());
+  const [showTimeTooltip, setShowTimeTooltip] = useState(false);
   const location = useLocation();
+
+  // Update cave time every second
+  useEffect(() => {
+    const timer = setInterval(() => setCaveTime(getCaveTime()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
@@ -42,8 +84,22 @@ const Layout: React.FC<LayoutProps> = ({ user, users, onSwitchUser, onRecovery }
             </Link>
           </div>
 
-          {/* Resources + User Switcher */}
+          {/* Resources + Time + Switcher */}
           <div className="nav-right">
+            {/* Cave Time Indicator */}
+            <div
+              className="cave-time"
+              onMouseEnter={() => setShowTimeTooltip(true)}
+              onMouseLeave={() => setShowTimeTooltip(false)}
+            >
+              <span className="cave-time-short">{caveTime.short}</span>
+              {showTimeTooltip && (
+                <div className="cave-time-tooltip">
+                  {caveTime.full}
+                </div>
+              )}
+            </div>
+
             {user && (
               <div className="nav-resources desktop-only">
                 <span className="resource" title="Food">🍖 {user.food}</span>
@@ -110,6 +166,7 @@ const Layout: React.FC<LayoutProps> = ({ user, users, onSwitchUser, onRecovery }
               <div className="mobile-nav-resources">
                 <span>🍖 {user.food}</span>
                 <span>🔥 {user.fire}</span>
+                <span>{caveTime.short}</span>
               </div>
             )}
           </div>

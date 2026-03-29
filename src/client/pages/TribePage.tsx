@@ -16,6 +16,7 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
   const [tribe, setTribe] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'threads' | 'members'>('threads');
+  const [actionLoading, setActionLoading] = useState(false);
 
   const fetchTribe = async () => {
     if (!id) return;
@@ -37,38 +38,56 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
   const isMember = tribe?.members?.some((m: any) => m.id === userId);
 
   const handleJoin = async () => {
-    if (!id) return;
-    await apiFetch(`/tribes/${id}/join`, { method: 'POST' });
-    await fetchTribe();
-    onRefreshUser();
+    if (!id || actionLoading) return;
+    setActionLoading(true);
+    try {
+      await apiFetch(`/tribes/${id}/join`, { method: 'POST' });
+      await fetchTribe();
+      onRefreshUser();
+    } catch (e: any) {
+      alert(`Failed to join: ${e.message}`);
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleLeave = async () => {
-    if (!id) return;
-    await apiFetch(`/tribes/${id}/leave`, { method: 'POST' });
-    await fetchTribe();
-    onRefreshUser();
+    if (!id || actionLoading) return;
+    setActionLoading(true);
+    try {
+      await apiFetch(`/tribes/${id}/leave`, { method: 'POST' });
+      await fetchTribe();
+      onRefreshUser();
+    } catch (e: any) {
+      alert(`Failed to leave: ${e.message}`);
+    } finally {
+      setActionLoading(false);
+    }
   };
 
-  const handlePost = async (content: string) => {
+  const handlePost = async (content: string, title?: string) => {
     if (!id) return;
-    await apiFetch('/threads', {
-      method: 'POST',
-      body: JSON.stringify({
-        type: 'text',
-        content,
-        title: content.substring(0, 40),
-        tribeId: id,
-      }),
-    });
-    await fetchTribe();
-    onRefreshUser();
+    try {
+      await apiFetch('/threads', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'text',
+          content,
+          title: title || content.substring(0, 40),
+          tribeId: id,
+        }),
+      });
+      await fetchTribe();
+      onRefreshUser();
+    } catch (e: any) {
+      alert(`Failed to post: ${e.message}`);
+      throw e;
+    }
   };
 
-  if (loading) return <div className="loading-state">Loading tribe...</div>;
+  if (loading && !tribe) return <div className="loading-state">Loading tribe...</div>;
   if (!tribe) return <div className="error-state">Tribe not found</div>;
 
-  // Sum fire across all members for sidebar glow
   const totalFire = tribe.members?.reduce((s: number, m: any) => s + (m.fire ?? 0), 0) ?? 0;
 
   return (
@@ -76,6 +95,7 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
       {/* Sidebar */}
       <ProfileSidebar
         name={tribe.name}
+        abbreviation={tribe.abbreviation}
         bio={tribe.description}
         avatar={tribe.avatar}
         fire={totalFire}
@@ -86,9 +106,13 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
           userId && (
             <div className="sidebar-actions">
               {isMember ? (
-                <button className="btn-leave" onClick={handleLeave}>Leave Tribe</button>
+                <button className="btn-leave" onClick={handleLeave} disabled={actionLoading}>
+                  {actionLoading ? '...' : 'Leave Tribe'}
+                </button>
               ) : (
-                <button className="btn-join" onClick={handleJoin}>Join Tribe</button>
+                <button className="btn-join" onClick={handleJoin} disabled={actionLoading}>
+                  {actionLoading ? '...' : 'Join Tribe'}
+                </button>
               )}
             </div>
           )
@@ -97,13 +121,12 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
 
       {/* Main Content */}
       <div className="main-column">
-        {/* Tabs */}
         <div className="tab-bar">
           <button
             className={`tab ${activeTab === 'threads' ? 'active' : ''}`}
             onClick={() => setActiveTab('threads')}
           >
-            🪨 Carvings
+            🪨 Posts
           </button>
           <button
             className={`tab ${activeTab === 'members' ? 'active' : ''}`}
@@ -113,15 +136,15 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
           </button>
         </div>
 
-        {/* Threads Tab */}
         {activeTab === 'threads' && (
           <div className="tab-content">
             {isMember && (
               <Composer
                 onSubmit={handlePost}
-                placeholder={`Carve into the ${tribe.name} wall...`}
+                placeholder={`Post to the ${tribe.name} wall...`}
                 cost={2}
                 costLabel="🍖 Food"
+                showTitle
               />
             )}
             <div className="feed">
@@ -129,13 +152,12 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
                 <ThreadCard key={thread.id} thread={thread} />
               ))}
               {(!tribe.threads || tribe.threads.length === 0) && (
-                <div className="feed-empty">No carvings in this tribe yet.</div>
+                <div className="feed-empty">No posts in this tribe yet.</div>
               )}
             </div>
           </div>
         )}
 
-        {/* Members Tab */}
         {activeTab === 'members' && (
           <div className="tab-content">
             <div className="card-grid">

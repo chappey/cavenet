@@ -32,6 +32,7 @@ const createSchema = () => {
     CREATE TABLE IF NOT EXISTS tribes (
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL UNIQUE,
+      abbreviation TEXT NOT NULL DEFAULT '',
       description TEXT DEFAULT '',
       avatar TEXT DEFAULT '',
       creator_id TEXT,
@@ -117,15 +118,15 @@ const createSchema = () => {
 
 const clearData = () => {
   sqlite.exec(`
-    DELETE FROM reward_events;
-    DELETE FROM user_activity;
-    DELETE FROM user_thread_stats;
-    DELETE FROM likes;
-    DELETE FROM replies;
-    DELETE FROM threads;
-    DELETE FROM user_tribes;
-    DELETE FROM tribes;
-    DELETE FROM users;
+    DROP TABLE IF EXISTS reward_events;
+    DROP TABLE IF EXISTS user_activity;
+    DROP TABLE IF EXISTS user_thread_stats;
+    DROP TABLE IF EXISTS likes;
+    DROP TABLE IF EXISTS replies;
+    DROP TABLE IF EXISTS threads;
+    DROP TABLE IF EXISTS user_tribes;
+    DROP TABLE IF EXISTS tribes;
+    DROP TABLE IF EXISTS users;
   `);
 };
 
@@ -156,16 +157,16 @@ const seedData = () => {
 
   // ── Tribes ──
   const tribes = [
-    { id: makeId(), name: 'Mountain Clan',  description: 'Strong cave people of the high rocks. We hunt mammoth.', creatorId: users[0].id },
-    { id: makeId(), name: 'River Tribe',    description: 'Fish catchers and reed weavers by the big water.', creatorId: users[2].id },
-    { id: makeId(), name: 'Shadow Painters', description: 'We paint story on cave wall. Art is life.', creatorId: users[3].id },
+    { id: makeId(), name: 'Mountain Clan',  abbr: 'MTN', description: 'Strong cave people of the high rocks. We hunt mammoth.', creatorId: users[0].id },
+    { id: makeId(), name: 'River Tribe',    abbr: 'RVR', description: 'Fish catchers and reed weavers by the big water.', creatorId: users[2].id },
+    { id: makeId(), name: 'Shadow Painters', abbr: 'SHPN', description: 'We paint story on cave wall. Art is life.', creatorId: users[3].id },
   ];
 
   const insertTribe = sqlite.query(
-    'INSERT INTO tribes (id, name, description, avatar, creator_id, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    'INSERT INTO tribes (id, name, abbreviation, description, avatar, creator_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
   );
   for (const t of tribes) {
-    insertTribe.run(t.id, t.name, t.description, '', t.creatorId, nowMs);
+    insertTribe.run(t.id, t.name, t.abbr, t.description, '', t.creatorId, nowMs);
   }
 
   // ── Tribe Memberships ──
@@ -315,8 +316,8 @@ const seedData = () => {
 };
 
 try {
-  createSchema();
   clearData();
+  createSchema();
   seedData();
   console.log(`Database ready at ${dbPath}`);
 } finally {
