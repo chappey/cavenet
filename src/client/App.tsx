@@ -17,11 +17,20 @@ function App() {
   const [currentSort, setCurrentSort] = useState('newest');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [characterPanelMode, setCharacterPanelMode] = useState<'select' | 'manage' | null>(userId ? null : 'select');
 
   const fetchUsers = useCallback(async () => {
     try {
+      const activeUserId = getCurrentUserId();
       const data = await apiFetch('/users');
       setAllUsers(data);
+      if (activeUserId && !data.some((u: any) => u.id === activeUserId)) {
+        setCurrentUserId(null);
+        setUserId(null);
+        setUser(null);
+        setFeed([]);
+        setCharacterPanelMode('select');
+      }
       setError(null);
     } catch (e: any) {
       console.error('Failed to load users', e);
@@ -72,9 +81,46 @@ function App() {
   const handleSwitchUser = (id: string) => {
     setCurrentUserId(id);
     setUserId(id);
+    setCharacterPanelMode(null);
+  };
+
+  const handleCreateCharacter = async (input: { username: string; bio: string; avatar?: string }) => {
+    const created = await apiFetch('/users', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    await fetchUsers();
+    setCurrentUserId(created.id);
+    setUserId(created.id);
+    setCharacterPanelMode(null);
+    return created;
+  };
+
+  const handleDeleteCharacter = async (id: string) => {
+    await apiFetch(`/users/${id}`, { method: 'DELETE' });
+    await fetchUsers();
+    if (userId === id) {
+      setCurrentUserId(null);
+      setUserId(null);
+      setUser(null);
+      setFeed([]);
+      setCharacterPanelMode('select');
+    }
+  };
+
+  const openCharacterManager = () => {
+    setCharacterPanelMode('manage');
+  };
+
+  const closeCharacterPanel = () => {
+    setCharacterPanelMode(userId ? null : 'select');
   };
 
   const handlePost = async (content: string, title?: string) => {
+    if (!userId) {
+      alert('Select a character first.');
+      return;
+    }
     try {
       await apiFetch('/threads', {
         method: 'POST',
@@ -94,16 +140,6 @@ function App() {
   const handleSortChange = async (sort: string) => {
     setCurrentSort(sort);
     await fetchFeed(sort);
-  };
-
-  const handleRecovery = async () => {
-    try {
-      const data = await apiFetch('/recovery', { method: 'POST' });
-      alert(`The tribe gave you ${data.reward} 🍖 food.`);
-      await Promise.all([fetchMe(), fetchUsers()]);
-    } catch (e: any) {
-      alert(`Recovery denied: ${e.message}`);
-    }
   };
 
   const refreshUser = async () => {
@@ -146,11 +182,17 @@ function App() {
   }
 
   // Show character select if no user chosen
-  if (!userId) {
+  if (characterPanelMode || !userId) {
     return (
       <CharacterSelect
         users={allUsers}
+        mode={characterPanelMode ?? 'select'}
+        currentUserId={userId}
         onSelect={handleSwitchUser}
+        onCreateCharacter={handleCreateCharacter}
+        onDeleteCharacter={handleDeleteCharacter}
+        onOpenManage={openCharacterManager}
+        onClose={closeCharacterPanel}
       />
     );
   }
@@ -162,7 +204,7 @@ function App() {
           user={user}
           users={allUsers}
           onSwitchUser={handleSwitchUser}
-          onRecovery={handleRecovery}
+          onManageCharacters={openCharacterManager}
         />
       }>
         <Route index element={

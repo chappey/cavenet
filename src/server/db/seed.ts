@@ -23,6 +23,7 @@ const createSchema = () => {
       username TEXT NOT NULL UNIQUE,
       bio TEXT DEFAULT '',
       avatar TEXT DEFAULT '',
+      is_player_character INTEGER NOT NULL DEFAULT 0,
       food INTEGER NOT NULL DEFAULT 10,
       fire INTEGER NOT NULL DEFAULT 0,
       last_active_at INTEGER NOT NULL,
@@ -133,19 +134,19 @@ const clearData = () => {
 const seedData = () => {
   // ── Users ──
   const users = [
-    { id: makeId(), username: 'Grog',   bio: 'Fire master. Me make best flame.', food: 10, fire: 5 },
-    { id: makeId(), username: 'Brakka', bio: 'Spear maker. Sharp thing good.', food: 8, fire: 3 },
-    { id: makeId(), username: 'Unga',   bio: 'Hunter of big beast.', food: 6, fire: 7 },
-    { id: makeId(), username: 'Thokk',  bio: 'Rock painter. Me draw mammoth.', food: 4, fire: 12 },
-    { id: makeId(), username: 'Kira',   bio: 'Berry finder. Know all plant.', food: 12, fire: 2 },
-    { id: makeId(), username: 'Drog',   bio: 'Strong. Carry big rock.', food: 3, fire: 0 },
+    { id: makeId(), username: 'Grog',   bio: 'Fire master. Me make best flame.', food: 10, fire: 5, isPlayerCharacter: false },
+    { id: makeId(), username: 'Brakka', bio: 'Spear maker. Sharp thing good.', food: 8, fire: 3, isPlayerCharacter: false },
+    { id: makeId(), username: 'Unga',   bio: 'Hunter of big beast.', food: 6, fire: 7, isPlayerCharacter: false },
+    { id: makeId(), username: 'Thokk',  bio: 'Rock painter. Me draw mammoth.', food: 4, fire: 12, isPlayerCharacter: false },
+    { id: makeId(), username: 'Kira',   bio: 'Berry finder. Know all plant.', food: 12, fire: 2, isPlayerCharacter: false },
+    { id: makeId(), username: 'Drog',   bio: 'Strong. Carry big rock.', food: 3, fire: 0, isPlayerCharacter: false },
   ];
 
   const insertUser = sqlite.query(
-    'INSERT INTO users (id, username, bio, avatar, food, fire, last_active_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO users (id, username, bio, avatar, is_player_character, food, fire, last_active_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
   for (const u of users) {
-    insertUser.run(u.id, u.username, u.bio, '', u.food, u.fire, nowMs, ago(24 * users.indexOf(u)));
+    insertUser.run(u.id, u.username, u.bio, '', u.isPlayerCharacter ? 1 : 0, u.food, u.fire, nowMs, ago(24 * users.indexOf(u)));
   }
 
   const insertActivity = sqlite.query(

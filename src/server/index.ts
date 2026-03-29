@@ -4,6 +4,7 @@ import { users, threads, replies, likes, tribes, userTribes, userThreadStats, us
 import { eq, desc, sql, and, inArray } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import { simulatedDaysBetween, TIME_SCALE } from './time';
+import { generateThreadDraft, generateThreadReplies, isGoogleGenAIConfigured } from './ai';
 
 // ── Constants ──
 
@@ -30,6 +31,71 @@ const daysBetweenUtc = (older: Date, newer: Date) => {
 const normalizeReply = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
 
 const contentHash = (value: string) => createHash('sha256').update(normalizeReply(value)).digest('hex');
+
+const insertThreadReply = async (tx: typeof db, {
+  threadId,
+  creatorId,
+  content,
+  isUniqueOverride,
+}: {
+  threadId: string;
+  creatorId: string;
+  content: string;
+  isUniqueOverride?: boolean;
+}) => {
+  const hash = contentHash(content);
+  const indexRows = await tx.select({
+    nextIndex: sql<number>`COALESCE(MAX(${replies.replyIndex}), 0) + 1`
+  })
+    .from(replies)
+    .where(eq(replies.threadId, threadId));
+  const replyIndex = indexRows[0]?.nextIndex ?? 1;
+
+  const duplicateHashReply = await tx.query.replies.findFirst({
+    where: and(eq(replies.threadId, threadId), eq(replies.contentHash, hash))
+  });
+  const isUnique = isUniqueOverride ?? !duplicateHashReply;
+
+  const [reply] = await tx.insert(replies).values({
+    threadId,
+    creatorId,
+    content,
+    contentHash: hash,
+    replyIndex,
+    isUnique,
+    fireGenerated: 0,
+  }).returning();
+
+  return reply;
+};
+
+const generateThreadAiReplies = async (thread: typeof threads.$inferSelect, creatorUsername: string) => {
+  if (!isGoogleGenAIConfigured()) return [];
+
+  const aiProfiles = (await db.select({
+    id: users.id,
+    username: users.username,
+    bio: users.bio,
+    isPlayerCharacter: users.isPlayerCharacter,
+  })
+    .from(users)
+    .orderBy(users.username))
+    .filter((user) => user.id !== thread.creatorId && !user.isPlayerCharacter)
+    .slice(0, 3)
+    .map((user) => ({ username: user.username, bio: user.bio ?? '' }));
+
+  if (aiProfiles.length === 0) return [];
+
+  const generatedReplies = await generateThreadReplies({
+    threadTitle: thread.title,
+    threadContent: thread.content,
+    threadType: thread.type,
+    creatorUsername,
+    profiles: aiProfiles,
+  });
+
+  return generatedReplies;
+};
 
 const getThreadAllowance = async (tx: typeof db, userId: string, threadId: string) => {
   const row = await tx.query.userThreadStats.findFirst({
@@ -203,10 +269,31 @@ const app = new Elysia()
         username: users.username,
         bio: users.bio,
         avatar: users.avatar,
+        isPlayerCharacter: users.isPlayerCharacter,
         food: users.food,
         fire: users.fire,
         createdAt: users.createdAt,
       }).from(users).orderBy(users.username);
+    })
+
+    .post('/users', async ({ body }) => {
+      const username = body.username.trim();
+      if (!username) throw new Error('Character name is required');
+
+      const [created] = await db.insert(users).values({
+        username,
+        bio: body.bio ?? '',
+        avatar: body.avatar ?? '',
+        isPlayerCharacter: true,
+      }).returning();
+
+      return created;
+    }, {
+      body: t.Object({
+        username: t.String(),
+        bio: t.Optional(t.String()),
+        avatar: t.Optional(t.String()),
+      })
     })
 
     .get('/me', async ({ userId }) => {
@@ -257,6 +344,15 @@ const app = new Elysia()
       body: t.Object({
         bio: t.String(),
       })
+    })
+
+    .delete('/users/:id', async ({ params }) => {
+      const target = await db.query.users.findFirst({ where: eq(users.id, params.id) });
+      if (!target) throw new Error('Character not found');
+      if (!target.isPlayerCharacter) throw new Error('Only player-created characters can be removed');
+
+      await db.delete(users).where(eq(users.id, params.id));
+      return { status: 'deleted' as const };
     })
 
     // ── Feed ──
@@ -324,6 +420,31 @@ const app = new Elysia()
         return newThread;
       });
 
+      const creator = await db.query.users.findFirst({ where: eq(users.id, userId) });
+      const creatorUsername = creator?.username ?? 'Unknown';
+
+      void (async () => {
+        try {
+          const aiReplies = await generateThreadAiReplies(thread, creatorUsername);
+          if (aiReplies.length === 0) return;
+
+          await db.transaction(async (tx) => {
+			for (const aiReply of aiReplies) {
+				const profile = await tx.query.users.findFirst({ where: eq(users.username, aiReply.username) });
+				if (!profile) continue;
+				await insertThreadReply(tx, {
+					threadId: thread.id,
+					creatorId: profile.id,
+					content: aiReply.content,
+					isUniqueOverride: true,
+				});
+			}
+          });
+        } catch (error) {
+          console.error('[ai-thread-replies] generation failed:', error);
+        }
+      })();
+
       return thread;
     }, {
       body: t.Object({
@@ -383,33 +504,16 @@ const app = new Elysia()
     .post('/threads/:id/replies', async ({ params, body, userId }) => {
       if (!userId) throw new Error('No user selected');
       const threadId = params.id;
-      const hash = contentHash(body.content);
 
       const result = await db.transaction(async (tx) => {
         const thread = await tx.query.threads.findFirst({ where: eq(threads.id, threadId) });
         if (!thread) throw new Error('Thread not found');
 
-        const indexRows = await tx.select({
-          nextIndex: sql<number>`COALESCE(MAX(${replies.replyIndex}), 0) + 1`
-        })
-          .from(replies)
-          .where(eq(replies.threadId, threadId));
-        const replyIndex = indexRows[0]?.nextIndex ?? 1;
-
-        const duplicateHashReply = await tx.query.replies.findFirst({
-          where: and(eq(replies.threadId, threadId), eq(replies.contentHash, hash))
-        });
-        const isUnique = !duplicateHashReply;
-
-        const [reply] = await tx.insert(replies).values({
-          threadId,
-          creatorId: userId,
-          content: body.content,
-          contentHash: hash,
-          replyIndex,
-          isUnique,
-          fireGenerated: 0,
-        }).returning();
+		const reply = await insertThreadReply(tx, {
+			threadId,
+			creatorId: userId,
+			content: body.content,
+		});
 
         let fireAwardedToReplier = 0;
         let fireAwardedToOwner = 0;
@@ -442,7 +546,7 @@ const app = new Elysia()
             fireAwardedToReplier = await grantThreadFire(tx, userId, threadId, baseReward);
           }
 
-          if (isUnique) {
+          if (reply.isUnique) {
             const ownerEvent = await tx.insert(rewardEvents)
               .values({ type: 'reply_owner', refId: reply.id })
               .onConflictDoNothing()
@@ -671,6 +775,20 @@ const app = new Elysia()
       });
 
       return { reward };
+    })
+
+    // ── AI ──
+
+    .post('/ai/thread-draft', async ({ body }) => {
+      if (!isGoogleGenAIConfigured()) {
+        throw new Error('Missing Gemini API key');
+      }
+
+      return await generateThreadDraft(body.prompt);
+    }, {
+      body: t.Object({
+        prompt: t.String(),
+      }),
     })
   )
 

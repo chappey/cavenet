@@ -232,7 +232,12 @@
 .switcher-option-name { font-weight: 500; }
 .switcher-option-stats { font-size: 0.7rem; color: var(--color-cave-300); }
 .switcher-divider { height: 1px; background: var(--color-cave-500); margin: 0.25rem 0; }
-.switcher-option.recovery { color: var(--color-fire-warm); }
+.switcher-option.manage { color: var(--color-fire-warm); }
+.switcher-empty {
+  padding: 0.5rem;
+  color: var(--color-cave-300);
+  font-size: 0.8rem;
+}
 
 /* ── Cave Time Indicator ── */
 .cave-time {
@@ -1066,6 +1071,35 @@
   margin: 0;
 }
 
+.character-empty-callout {
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(255, 122, 0, 0.25);
+  border-radius: 12px;
+  background: rgba(255, 122, 0, 0.08);
+  color: var(--color-cave-100);
+}
+
+.character-manager-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.character-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: var(--color-cave-800);
+  border: 1px solid var(--color-cave-500);
+  border-radius: 12px;
+  padding: 1rem;
+  width: 100%;
+}
+
 .character-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -1091,6 +1125,10 @@
   transform: translateY(-4px);
   box-shadow: 0 8px 24px rgba(255,122,0,0.2);
 }
+.character-card.selected {
+  border-color: var(--color-fire-hot);
+  box-shadow: 0 0 0 1px rgba(255,122,0,0.35), 0 8px 24px rgba(255,122,0,0.12);
+}
 
 .character-avatar {
   width: 64px; height: 64px;
@@ -1107,6 +1145,35 @@
   font-weight: 700;
   margin: 0;
 }
+
+.character-card-topline {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.character-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+.character-badge.player {
+  color: var(--color-fire-warm);
+  background: rgba(255, 122, 0, 0.12);
+  border-color: rgba(255, 122, 0, 0.25);
+}
+.character-badge.npc {
+  color: var(--color-ice);
+  background: rgba(100, 140, 255, 0.12);
+  border-color: rgba(100, 140, 255, 0.25);
+}
 .character-bio {
   font-size: 0.8rem;
   color: var(--color-cave-300);
@@ -1118,6 +1185,29 @@
   gap: 1rem;
   font-size: 0.85rem;
   color: var(--color-cave-200);
+}
+
+.character-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.character-card-btn {
+  padding: 0.45rem 0.7rem;
+  font-size: 0.75rem;
+}
+
+.character-select-hint {
+  color: var(--color-cave-300);
+  font-size: 0.75rem;
+}
+
+.character-manager-footer {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
 }
 
 /* ── States ── */
