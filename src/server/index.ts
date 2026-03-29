@@ -3,7 +3,7 @@ import { db } from './db';
 import { users, threads, replies, likes, tribes, userTribes, userThreadStats, userActivity, rewardEvents } from './db/schema';
 import { eq, desc, sql, and, inArray } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
-import { simulatedDaysBetween, TIME_SCALE } from './time';
+import { simulatedDaysBetween, TIME_SCALE, getSimulatedNow } from './time';
 import { generateCharacterDraft, generateThreadDraft, generateThreadReplies, isGoogleGenAIConfigured, pickReplyMood } from './ai';
 
 // ── Constants ──
@@ -17,6 +17,11 @@ const POST_COST = {
 const TRIBE_CREATION_COST = 3;
 const THREAD_FIRE_CAP = 20;
 const FIRE_DECAY_PER_DAY = 1;
+const AI_POST_TICK_MS = 8_000;
+const AI_DAILY_FIRE_TICK_MS = 45_000;
+const AI_POST_MIN_DELAY_MS = 45_000;
+const AI_POST_MAX_DELAY_MS = 180_000;
+const AI_DAILY_FIRE_AMOUNT = 1;
 
 // ── Helpers ──
 
@@ -93,6 +98,57 @@ const getOrganicLikeBudget = (qualityScore: number, availableNpcCount: number) =
   const base = qualityScore < 45 ? 1 : qualityScore < 70 ? 2 : qualityScore < 85 ? 4 : 6;
   return Math.min(base, Math.max(0, availableNpcCount));
 };
+
+type AutoPostAgent = {
+  id: string;
+  username: string;
+  bio: string;
+  tribeName: string | null;
+  tribeDescription: string | null;
+  nextPostAt: number;
+};
+
+const autoPostAgents = new Map<string, AutoPostAgent>();
+let autoPostSchedulerReady = false;
+let autoPostSchedulerBusy = false;
+let autoPostTickHandle: ReturnType<typeof setInterval> | null = null;
+let aiDailyFireTickHandle: ReturnType<typeof setInterval> | null = null;
+
+const randomBetween = (min: number, max: number) => min + Math.floor(Math.random() * Math.max(1, max - min + 1));
+
+const describeAgentInterest = (agent: Pick<AutoPostAgent, 'username' | 'bio' | 'tribeName' | 'tribeDescription'>) => {
+  const tribeBit = agent.tribeName ? `${agent.tribeName}${agent.tribeDescription ? ` — ${agent.tribeDescription}` : ''}` : 'general cave life';
+  return `${agent.username} is a prehistoric social poster with a focus on ${tribeBit}. Bio: ${agent.bio || 'mysterious cave person.'}`;
+};
+
+const buildFallbackAutoPostDraft = (agent: AutoPostAgent) => {
+  const tribeWord = agent.tribeName ?? 'cave life';
+  const hooks = [
+    'big question for clan',
+    'hot take from fire circle',
+    'something strange in cave',
+    'help needed from tribe',
+    'new idea for hunt',
+  ];
+  const hook = hooks[randomBetween(0, hooks.length - 1)];
+  return {
+    title: `${tribeWord}: ${hook}`.slice(0, 80),
+    content: `${agent.username} say: ${hook}. Me think about ${agent.tribeName ?? 'all cave people'} and want to hear grunts back.`,
+    type: 'text' as const,
+  };
+};
+
+const buildAgentDraftPrompt = (agent: AutoPostAgent) => [
+  'Write one caveman social post draft for Cavenet from an autonomous AI agent.',
+  'Return only valid JSON with keys: title, content, type, imagePrompt.',
+  'Allowed type values are text, image, or mixed.',
+  'Keep it playful, short, and in first person.',
+  `Agent profile: ${describeAgentInterest(agent)}`,
+  'The post should feel like a prehistoric subreddit submission.',
+  'Do not mention AI or automation.',
+].join('\n');
+
+const getSimulatedDayKey = () => toDayKey(getSimulatedNow());
 
 type EngagementStatus = 'idle' | 'queued' | 'active' | 'complete' | 'inactive';
 
@@ -478,6 +534,186 @@ const generateThreadAiReplies = async (thread: typeof threads.$inferSelect, crea
   });
 
   return { generatedReplies, mood, qualityScore, profiles: aiProfiles };
+};
+
+const loadAutoPostAgents = async () => {
+  const rows = await db.select({
+    id: users.id,
+    username: users.username,
+    bio: users.bio,
+    tribeName: tribes.name,
+    tribeDescription: tribes.description,
+  })
+    .from(users)
+    .leftJoin(userTribes, eq(userTribes.userId, users.id))
+    .leftJoin(tribes, eq(tribes.id, userTribes.tribeId))
+    .where(eq(users.isPlayerCharacter, false))
+    .orderBy(users.username);
+
+  autoPostAgents.clear();
+  rows.forEach((row, index) => {
+    if (autoPostAgents.has(row.id)) return;
+    autoPostAgents.set(row.id, {
+      id: row.id,
+      username: row.username,
+      bio: row.bio ?? '',
+      tribeName: row.tribeName ?? null,
+      tribeDescription: row.tribeDescription ?? null,
+      nextPostAt: Date.now() + (index * 18_000) + randomBetween(10_000, 45_000),
+    });
+  });
+
+  console.info(`[ai-scheduler] loaded ${autoPostAgents.size} auto posters`);
+  for (const agent of autoPostAgents.values()) {
+    console.info(`[ai-scheduler] ${agent.username} next post at ${new Date(agent.nextPostAt).toISOString()}`);
+  }
+};
+
+const scheduleNextAutoPost = (agent: AutoPostAgent, reason: string) => {
+  agent.nextPostAt = Date.now() + randomBetween(AI_POST_MIN_DELAY_MS, AI_POST_MAX_DELAY_MS);
+  console.info(`[ai-scheduler] ${agent.username} rescheduled (${reason}) for ${new Date(agent.nextPostAt).toISOString()}`);
+};
+
+const grantDailyFireToPlayers = async () => {
+  const dayKey = getSimulatedDayKey();
+  const playerRows = await db.select({
+    id: users.id,
+    username: users.username,
+  })
+    .from(users)
+    .where(eq(users.isPlayerCharacter, true));
+
+  let grantedCount = 0;
+
+  await db.transaction(async (tx) => {
+    for (const player of playerRows) {
+      const refId = `daily-fire:${dayKey}:${player.id}`;
+      const event = await tx.insert(rewardEvents)
+        .values({ type: 'daily_fire', refId })
+        .onConflictDoNothing()
+        .returning();
+
+      if (event.length === 0) continue;
+
+      grantedCount += 1;
+      await tx.update(users)
+        .set({ fire: sql`${users.fire} + ${AI_DAILY_FIRE_AMOUNT}` })
+        .where(eq(users.id, player.id));
+    }
+  });
+
+  if (grantedCount > 0) {
+    console.info(`[daily-fire] granted +${AI_DAILY_FIRE_AMOUNT} fire to ${grantedCount} player characters for simulated day ${dayKey}`);
+  }
+};
+
+const buildAutoPostDraft = async (agent: AutoPostAgent) => {
+  const prompt = buildAgentDraftPrompt(agent);
+
+  try {
+    const draft = await generateThreadDraft(prompt);
+    return {
+      title: draft.title || `${agent.tribeName ?? 'Cave'} talk`,
+      content: draft.content || `${agent.username} says something about cave life.`,
+      type: draft.type,
+      imagePrompt: draft.imagePrompt,
+    };
+  } catch (error) {
+    console.warn(`[ai-scheduler] ${agent.username} draft fallback used:`, error);
+    return buildFallbackAutoPostDraft(agent);
+  }
+};
+
+const submitAutoPost = async (agent: AutoPostAgent) => {
+  const user = await db.query.users.findFirst({ where: eq(users.id, agent.id) });
+  if (!user) {
+    console.warn(`[ai-scheduler] ${agent.username} disappeared; removing from queue`);
+    autoPostAgents.delete(agent.id);
+    return;
+  }
+
+  const cost = POST_COST.text;
+  if (user.food < cost) {
+    console.warn(`[ai-scheduler] ${agent.username} is hungry (${user.food} food). Skipping post and rescheduling.`);
+    scheduleNextAutoPost(agent, 'hungry');
+    return;
+  }
+
+  const draft = await buildAutoPostDraft(agent);
+  const tribeRoll = Math.random();
+  const tribeId = tribeRoll < 0.65 ? await (async () => {
+    const tribeRows = await db.select({ tribeId: userTribes.tribeId })
+      .from(userTribes)
+      .where(eq(userTribes.userId, agent.id));
+    return tribeRows[0]?.tribeId ?? null;
+  })() : null;
+
+  const thread = await db.transaction(async (tx) => {
+    await tx.update(users)
+      .set({ food: sql`${users.food} - ${cost}` })
+      .where(eq(users.id, agent.id));
+
+    const [newThread] = await tx.insert(threads).values({
+      creatorId: agent.id,
+      title: draft.title,
+      type: draft.type,
+      content: draft.content,
+      imageUrl: draft.imagePrompt || undefined,
+      tribeId,
+    }).returning();
+
+    await markUserActive(tx, agent.id);
+    return newThread;
+  });
+
+  const qualityScore = scoreThreadQuality(thread.title ?? null, thread.content ?? '');
+  console.info(`[ai-scheduler] ${agent.username} posted thread ${thread.id} (quality=${qualityScore}, tribe=${tribeId ?? 'none'})`);
+  void queueThreadEngagement(thread, agent.username, qualityScore);
+};
+
+const runAutoPostSchedulerTick = async () => {
+  if (autoPostSchedulerBusy) return;
+  autoPostSchedulerBusy = true;
+
+  try {
+    if (!autoPostSchedulerReady) {
+      await loadAutoPostAgents();
+      autoPostSchedulerReady = true;
+    }
+
+    const dueAgent = [...autoPostAgents.values()]
+      .filter(agent => agent.nextPostAt <= Date.now())
+      .sort((a, b) => a.nextPostAt - b.nextPostAt)[0];
+
+    if (!dueAgent) return;
+
+    console.info(`[ai-scheduler] firing ${dueAgent.username} now`);
+    await submitAutoPost(dueAgent);
+    scheduleNextAutoPost(dueAgent, 'completed post');
+  } catch (error) {
+    console.error('[ai-scheduler] tick failed:', error);
+  } finally {
+    autoPostSchedulerBusy = false;
+  }
+};
+
+const startAutoSchedulers = () => {
+  if (autoPostTickHandle || aiDailyFireTickHandle) return;
+
+  console.info(`[ai-scheduler] starting global scheduler (tick=${AI_POST_TICK_MS}ms, daily-fire-tick=${AI_DAILY_FIRE_TICK_MS}ms, scale=${TIME_SCALE}x)`);
+  void runAutoPostSchedulerTick();
+  void grantDailyFireToPlayers().catch((error) => {
+    console.error('[daily-fire] startup grant failed:', error);
+  });
+  autoPostTickHandle = setInterval(() => {
+    void runAutoPostSchedulerTick();
+  }, AI_POST_TICK_MS);
+
+  aiDailyFireTickHandle = setInterval(() => {
+    void grantDailyFireToPlayers().catch((error) => {
+      console.error('[daily-fire] tick failed:', error);
+    });
+  }, AI_DAILY_FIRE_TICK_MS);
 };
 
 const getThreadAllowance = async (tx: typeof db, userId: string, threadId: string) => {
@@ -1191,6 +1427,8 @@ const app = new Elysia()
   )
 
   .listen(Number(process.env.API_PORT || 3001));
+
+startAutoSchedulers();
 
 export type App = typeof app;
 console.log(`🦊 Cavenet API running at ${app.server?.hostname}:${app.server?.port}`);

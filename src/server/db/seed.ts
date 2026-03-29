@@ -134,12 +134,12 @@ const clearData = () => {
 const seedData = () => {
   // ── Users ──
   const users = [
-    { id: makeId(), username: 'Grog',   bio: 'Fire keeper. Make camp glow all night.', food: 10, fire: 8, isPlayerCharacter: false },
-    { id: makeId(), username: 'Brakka', bio: 'Tool maker. Flint go click click and cut good.', food: 8, fire: 5, isPlayerCharacter: false },
-    { id: makeId(), username: 'Unga',   bio: 'Hunter. Track mammoth, deer, and snack.', food: 6, fire: 9, isPlayerCharacter: false },
-    { id: makeId(), username: 'Thokk',  bio: 'Cave artist. Paint big story on wall.', food: 4, fire: 12, isPlayerCharacter: false },
-    { id: makeId(), username: 'Kira',   bio: 'Berry forager. Know safe plant and tasty root.', food: 12, fire: 4, isPlayerCharacter: false },
-    { id: makeId(), username: 'Drog',   bio: 'Rock hauler. Build shelter and stack stone.', food: 3, fire: 1, isPlayerCharacter: false },
+    { id: makeId(), username: 'Grog',   bio: 'Fire keeper. Make camp glow all night.', food: 18, fire: 1, isPlayerCharacter: false },
+    { id: makeId(), username: 'Brakka', bio: 'Tool maker. Flint go click click and cut good.', food: 16, fire: 0, isPlayerCharacter: false },
+    { id: makeId(), username: 'Unga',   bio: 'Hunter. Track mammoth, deer, and snack.', food: 18, fire: 2, isPlayerCharacter: false },
+    { id: makeId(), username: 'Thokk',  bio: 'Cave artist. Paint big story on wall.', food: 15, fire: 3, isPlayerCharacter: false },
+    { id: makeId(), username: 'Kira',   bio: 'Berry forager. Know safe plant and tasty root.', food: 20, fire: 1, isPlayerCharacter: false },
+    { id: makeId(), username: 'Drog',   bio: 'Rock hauler. Build shelter and stack stone.', food: 14, fire: 0, isPlayerCharacter: false },
   ];
 
   const insertUser = sqlite.query(
