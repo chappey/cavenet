@@ -61,6 +61,8 @@ const Layout: React.FC<LayoutProps> = ({ user, users, onSwitchUser, onManageChar
     return location.pathname.startsWith(path);
   };
 
+  const isHuntGameRoute = location.pathname.startsWith('/games/hunt');
+
   return (
     <div className="app-layout">
       {/* TOP NAV */}
@@ -191,7 +193,7 @@ const Layout: React.FC<LayoutProps> = ({ user, users, onSwitchUser, onManageChar
       {switcherOpen && <div className="backdrop" onClick={() => setSwitcherOpen(false)} />}
 
       {/* MAIN */}
-      <main className="main-content">
+      <main className={`main-content ${isHuntGameRoute ? 'main-content-game' : ''}`}>
         <Outlet />
       </main>
     </div>

@@ -21,22 +21,99 @@ type RunnerState = {
 const WIDTH = 420;
 const HEIGHT = 220;
 const GROUND_Y = 182;
+const HIGH_SCORE_KEY = 'cavenet_hunt_high_score';
 
 const makeRunId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
+const readHighScore = () => {
+  if (typeof window === 'undefined') return 0;
+
+  try {
+    const raw = window.localStorage.getItem(HIGH_SCORE_KEY);
+    const parsed = raw ? Number(raw) : 0;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  } catch {
+    return 0;
+  }
+};
+
+const saveHighScore = (score: number) => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(HIGH_SCORE_KEY, String(score));
+  } catch {
+    // Ignore storage failures so the game still works.
+  }
+};
+
 const HuntGamePage: React.FC<HuntGamePageProps> = ({ userId, onRefreshUser }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasFrameRef = useRef<HTMLDivElement | null>(null);
   const runIdRef = useRef(makeRunId());
   const claimedRef = useRef(false);
   const rafRef = useRef<number | null>(null);
   const [sessionKey, setSessionKey] = useState(0);
   const [score, setScore] = useState(0);
+  const [highScore, setHighScore] = useState(() => readHighScore());
   const [gameOver, setGameOver] = useState(false);
   const [rewardFire, setRewardFire] = useState<number | null>(null);
   const [claimStatus, setClaimStatus] = useState<string>('');
   const [claiming, setClaiming] = useState(false);
+  const [newRecordRun, setNewRecordRun] = useState(false);
 
   const title = useMemo(() => '🎮 Hunt for Fire', []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const frame = canvasFrameRef.current;
+    if (!canvas || !frame) return;
+
+    const syncCanvasSize = () => {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const rect = frame.getBoundingClientRect();
+      const availableWidth = Math.max(1, rect.width);
+      const availableHeight = Math.max(1, rect.height);
+      const aspectRatio = WIDTH / HEIGHT;
+
+      let displayWidth = availableWidth;
+      let displayHeight = displayWidth / aspectRatio;
+
+      if (displayHeight > availableHeight) {
+        displayHeight = availableHeight;
+        displayWidth = displayHeight * aspectRatio;
+      }
+
+      const dpr = window.devicePixelRatio || 1;
+      const scale = displayWidth / WIDTH;
+      canvas.width = Math.round(displayWidth * dpr);
+      canvas.height = Math.round(displayHeight * dpr);
+      canvas.style.width = `${displayWidth}px`;
+      canvas.style.height = `${displayHeight}px`;
+      ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+    };
+
+    syncCanvasSize();
+
+    const resizeObserver = new ResizeObserver(syncCanvasSize);
+    resizeObserver.observe(frame);
+    window.addEventListener('resize', syncCanvasSize);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', syncCanvasSize);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (score <= highScore) return;
+
+    setHighScore(score);
+    setNewRecordRun(true);
+    saveHighScore(score);
+  }, [score, highScore]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -224,7 +301,10 @@ const HuntGamePage: React.FC<HuntGamePageProps> = ({ userId, onRefreshUser }) =>
     setRewardFire(null);
     setClaimStatus('');
     setClaiming(false);
+    setNewRecordRun(false);
   }, [sessionKey]);
+
+  const restartRun = () => setSessionKey(key => key + 1);
 
   if (!userId) {
     return (
@@ -247,29 +327,31 @@ const HuntGamePage: React.FC<HuntGamePageProps> = ({ userId, onRefreshUser }) =>
         <div className="game-topbar">
           <div className="game-stat">🪵 Run: {sessionKey + 1}</div>
           <div className="game-stat">🔥 Score: {score}</div>
+          <div className={`game-stat ${highScore > 0 ? 'game-stat-record' : ''}`}>
+            🏆 Best: {highScore}
+          </div>
           <div className="game-stat">{gameOver ? '❌' : '✅'} {gameOver ? 'Run over' : 'Run live'}</div>
         </div>
 
-        <canvas
-          ref={canvasRef}
-          width={WIDTH}
-          height={HEIGHT}
-          className="hunt-canvas"
-        />
+        <div className="game-stage" ref={canvasFrameRef}>
+          <canvas
+            ref={canvasRef}
+            width={WIDTH}
+            height={HEIGHT}
+            className="hunt-canvas"
+          />
+        </div>
 
         <div className="game-status-row">
-          <div className="game-status-text">
+          <div className="game-status-text" role="status" aria-live="polite">
             {claiming ? 'Locking in your fire...' : claimStatus || 'Collect meat to turn it into fire.'}
           </div>
           <div className="game-controls-hint">Space or tap the cave floor to jump</div>
         </div>
 
         <div className="game-actions">
-          <button className="btn-carve" onClick={() => setSessionKey(key => key + 1)} disabled={claiming}>
+          <button className="btn-carve" onClick={restartRun} disabled={claiming}>
             🔄 Hunt Again
-          </button>
-          <button className="btn-cancel" onClick={() => setSessionKey(key => key + 1)} disabled={claiming}>
-            New Run
           </button>
           <Link className="btn-cancel game-exit-link" to="/">
             Exit Hunt
@@ -277,8 +359,12 @@ const HuntGamePage: React.FC<HuntGamePageProps> = ({ userId, onRefreshUser }) =>
         </div>
 
         {rewardFire !== null && gameOver && (
-          <div className="game-reward-card">
-            {rewardFire > 0 ? (
+          <div className={`game-reward-card ${newRecordRun ? 'game-reward-card-record' : ''}`}>
+            {newRecordRun ? (
+              <>
+                <strong>New personal best!</strong> Fire score saved locally at {highScore}.
+              </>
+            ) : rewardFire > 0 ? (
               <>
                 <strong>Fire gained:</strong> +{rewardFire}
               </>
