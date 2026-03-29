@@ -10,13 +10,18 @@ Cavenet is a playful social feed app set in a caveman timeline, powered by a Rea
 bun install
 ```
 
-2. Run the app (server + client):
+2. Seed the database
+```bash
+bun run db:seed
+```
+
+3. Run the app (server + client):
 
 ```bash
 bun run dev
 ```
 
-3. Open:
+4. Open:
 
 `http://localhost:3000`
 

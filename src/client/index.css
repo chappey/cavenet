@@ -329,6 +329,18 @@
   margin: 0 0 1.5rem;
 }
 
+.home-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+
+.home-leaderboard-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 /* ── Sort Controls ── */
 .sort-controls {
   display: flex;
@@ -996,6 +1008,138 @@
 .tribe-card-members {
   font-size: 0.75rem;
   color: var(--color-cave-300);
+}
+
+/* ── Leaderboard ── */
+.leaderboard-view {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.leaderboard-back-link {
+  display: inline-flex;
+  margin-bottom: 0.75rem;
+}
+
+.leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1rem;
+  background: var(--color-cave-800);
+  border: 1px solid var(--color-cave-500);
+  border-radius: 16px;
+  transition: all 0.2s;
+}
+
+.leaderboard-row:hover {
+  border-color: var(--color-fire-hot);
+  transform: translateY(-2px);
+}
+
+.leaderboard-row.current {
+  border-color: rgba(255, 122, 0, 0.35);
+  box-shadow: 0 0 0 1px rgba(255, 122, 0, 0.12);
+}
+
+.leaderboard-rank {
+  width: 44px;
+  text-align: center;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--color-fire-warm);
+}
+
+.leaderboard-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--color-fire-hot), var(--color-ember));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+
+.leaderboard-main {
+  min-width: 0;
+}
+
+.leaderboard-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.leaderboard-name {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.leaderboard-you {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-fire-warm);
+  border: 1px solid rgba(255, 122, 0, 0.25);
+  background: rgba(255, 122, 0, 0.1);
+  border-radius: 999px;
+  padding: 0.18rem 0.45rem;
+}
+
+.leaderboard-bio {
+  margin: 0.25rem 0 0;
+  color: var(--color-cave-300);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.leaderboard-stats {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.leaderboard-stat {
+  min-width: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.leaderboard-stat-label {
+  font-size: 0.7rem;
+  color: var(--color-cave-300);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.leaderboard-stat-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .leaderboard-row {
+    grid-template-columns: auto 1fr;
+    align-items: start;
+  }
+
+  .leaderboard-stats {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    padding-left: 3.6rem;
+  }
 }
 
 /* ── Tribe Create ── */
