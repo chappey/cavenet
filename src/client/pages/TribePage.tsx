@@ -15,6 +15,7 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
   const { id } = useParams<{ id: string }>();
   const [tribe, setTribe] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'threads' | 'members'>('threads');
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -22,10 +23,12 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
     if (!id) return;
     try {
       setLoading(true);
+      setError(null);
       const data = await apiFetch(`/tribes/${id}`);
       setTribe(data);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to load tribe', e);
+      setError(e.message || 'The spirits are blocking access to this tribe.');
     } finally {
       setLoading(false);
     }
@@ -85,7 +88,24 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
     }
   };
 
-  if (loading && !tribe) return <div className="loading-state">Loading tribe...</div>;
+  if (loading && !tribe) return (
+    <div className="loading-state">
+      <div className="spinner">🔥</div>
+      <p>Finding the tribe's camp...</p>
+    </div>
+  );
+
+  if (error && !tribe) return (
+    <div className="error-state">
+      <div className="error-icon">🌋</div>
+      <h3>Tribe is Hidden</h3>
+      <p>{error}</p>
+      <button className="btn-carve" onClick={fetchTribe}>
+        🔄 Seek the Camp Again
+      </button>
+    </div>
+  );
+
   if (!tribe) return <div className="error-state">Tribe not found</div>;
 
   const totalFire = tribe.members?.reduce((s: number, m: any) => s + (m.fire ?? 0), 0) ?? 0;

@@ -16,13 +16,16 @@ function App() {
   const [feed, setFeed] = useState<any[]>([]);
   const [currentSort, setCurrentSort] = useState('newest');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     try {
       const data = await apiFetch('/users');
       setAllUsers(data);
-    } catch (e) {
+      setError(null);
+    } catch (e: any) {
       console.error('Failed to load users', e);
+      setError(e.message || 'Failed to connect to the caveland.');
     }
   }, []);
 
@@ -31,7 +34,7 @@ function App() {
     try {
       const data = await apiFetch('/me');
       setUser(data);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to load user', e);
     }
   }, [userId]);
@@ -41,7 +44,7 @@ function App() {
       const s = sort ?? currentSort;
       const data = await apiFetch(`/feed?sort=${s}`);
       setFeed(data);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to load feed', e);
     }
   }, [currentSort]);
@@ -54,7 +57,7 @@ function App() {
       setLoading(false);
     };
     init();
-  }, []);
+  }, [fetchUsers]);
 
   // When userId changes (on select or switch), fetch me + feed
   useEffect(() => {
@@ -64,7 +67,7 @@ function App() {
       setUser(null);
       setFeed([]);
     }
-  }, [userId]);
+  }, [userId, fetchMe, fetchFeed]);
 
   const handleSwitchUser = (id: string) => {
     setCurrentUserId(id);
@@ -107,11 +110,43 @@ function App() {
     await Promise.all([fetchMe(), fetchUsers()]);
   };
 
+  const handleRetry = async () => {
+    setError(null);
+    setLoading(true);
+    await fetchUsers();
+    setLoading(false);
+  };
+
+  // Show error screen if we can't even get the user list
+  if (error && allUsers.length === 0) {
+    return (
+      <div className="error-screen">
+        <div className="error-card">
+          <h1>🌪️ Storm Over CaveLand</h1>
+          <p>We cannot reach the cave at this moment. The connection is weak.</p>
+          <code className="error-msg">{error}</code>
+          <button className="btn-carve" onClick={handleRetry}>
+            🔄 Try Reconnecting
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading state if we have no users yet
+  if (loading && allUsers.length === 0) {
+    return (
+      <div className="loading-screen">
+        <div className="loading-content">
+          <div className="spinner">🔥</div>
+          <p>Lighting the torches...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Show character select if no user chosen
   if (!userId) {
-    if (allUsers.length === 0 && loading) {
-      return <div className="loading-state">Loading Cavenet...</div>;
-    }
     return (
       <CharacterSelect
         users={allUsers}
