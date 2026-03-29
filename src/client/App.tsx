@@ -8,6 +8,7 @@ import ThreadPage from './pages/ThreadPage';
 import ProfilePage from './pages/ProfilePage';
 import TribePage from './pages/TribePage';
 import TribesListPage from './pages/TribesListPage';
+import LeaderboardPage from './pages/LeaderboardPage';
 
 function App() {
   const [userId, setUserId] = useState<string | null>(getCurrentUserId());
@@ -16,15 +17,25 @@ function App() {
   const [feed, setFeed] = useState<any[]>([]);
   const [currentSort, setCurrentSort] = useState('newest');
   const [loading, setLoading] = useState(true);
-  const [showGame, setShoeGame] = useState(false);
-  const [meat, setMeat] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [characterPanelMode, setCharacterPanelMode] = useState<'select' | 'manage' | null>(userId ? null : 'select');
 
   const fetchUsers = useCallback(async () => {
     try {
+      const activeUserId = getCurrentUserId();
       const data = await apiFetch('/users');
       setAllUsers(data);
-    } catch (e) {
+      if (activeUserId && !data.some((u: any) => u.id === activeUserId)) {
+        setCurrentUserId(null);
+        setUserId(null);
+        setUser(null);
+        setFeed([]);
+        setCharacterPanelMode('select');
+      }
+      setError(null);
+    } catch (e: any) {
       console.error('Failed to load users', e);
+      setError(e.message || 'Failed to connect to the caveland.');
     }
   }, []);
 
@@ -33,7 +44,7 @@ function App() {
     try {
       const data = await apiFetch('/me');
       setUser(data);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to load user', e);
     }
   }, [userId]);
@@ -43,7 +54,7 @@ function App() {
       const s = sort ?? currentSort;
       const data = await apiFetch(`/feed?sort=${s}`);
       setFeed(data);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to load feed', e);
     }
   }, [currentSort]);
@@ -56,7 +67,7 @@ function App() {
       setLoading(false);
     };
     init();
-  }, []);
+  }, [fetchUsers]);
 
   // When userId changes (on select or switch), fetch me + feed
   useEffect(() => {
@@ -66,14 +77,51 @@ function App() {
       setUser(null);
       setFeed([]);
     }
-  }, [userId]);
+  }, [userId, fetchMe, fetchFeed]);
 
   const handleSwitchUser = (id: string) => {
     setCurrentUserId(id);
     setUserId(id);
+    setCharacterPanelMode(null);
+  };
+
+  const handleCreateCharacter = async (input: { username: string; bio: string; avatar?: string }) => {
+    const created = await apiFetch('/users', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    await fetchUsers();
+    setCurrentUserId(created.id);
+    setUserId(created.id);
+    setCharacterPanelMode(null);
+    return created;
+  };
+
+  const handleDeleteCharacter = async (id: string) => {
+    await apiFetch(`/users/${id}`, { method: 'DELETE' });
+    await fetchUsers();
+    if (userId === id) {
+      setCurrentUserId(null);
+      setUserId(null);
+      setUser(null);
+      setFeed([]);
+      setCharacterPanelMode('select');
+    }
+  };
+
+  const openCharacterManager = () => {
+    setCharacterPanelMode('manage');
+  };
+
+  const closeCharacterPanel = () => {
+    setCharacterPanelMode(userId ? null : 'select');
   };
 
   const handlePost = async (content: string, title?: string) => {
+    if (!userId) {
+      alert('Select a character first.');
+      return;
+    }
     try {
       await apiFetch('/threads', {
         method: 'POST',
@@ -95,29 +143,57 @@ function App() {
     await fetchFeed(sort);
   };
 
-  const handleRecovery = async () => {
-    try {
-      const data = await apiFetch('/recovery', { method: 'POST' });
-      alert(`The tribe gave you ${data.reward} 🍖 food.`);
-      await Promise.all([fetchMe(), fetchUsers()]);
-    } catch (e: any) {
-      alert(`Recovery denied: ${e.message}`);
-    }
-  };
-
   const refreshUser = async () => {
     await Promise.all([fetchMe(), fetchUsers()]);
   };
 
+  const handleRetry = async () => {
+    setError(null);
+    setLoading(true);
+    await fetchUsers();
+    setLoading(false);
+  };
+
+  // Show error screen if we can't even get the user list
+  if (error && allUsers.length === 0) {
+    return (
+      <div className="error-screen">
+        <div className="error-card">
+          <h1>🌪️ Storm Over CaveLand</h1>
+          <p>We cannot reach the cave at this moment. The connection is weak.</p>
+          <code className="error-msg">{error}</code>
+          <button className="btn-carve" onClick={handleRetry}>
+            🔄 Try Reconnecting
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading state if we have no users yet
+  if (loading && allUsers.length === 0) {
+    return (
+      <div className="loading-screen">
+        <div className="loading-content">
+          <div className="spinner">🔥</div>
+          <p>Lighting the torches...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Show character select if no user chosen
-  if (!userId) {
-    if (allUsers.length === 0 && loading) {
-      return <div className="loading-state">Loading Cavenet...</div>;
-    }
+  if (characterPanelMode || !userId) {
     return (
       <CharacterSelect
         users={allUsers}
+        mode={characterPanelMode ?? 'select'}
+        currentUserId={userId}
         onSelect={handleSwitchUser}
+        onCreateCharacter={handleCreateCharacter}
+        onDeleteCharacter={handleDeleteCharacter}
+        onOpenManage={openCharacterManager}
+        onClose={closeCharacterPanel}
       />
     );
   }
@@ -129,7 +205,7 @@ function App() {
           user={user}
           users={allUsers}
           onSwitchUser={handleSwitchUser}
-          onRecovery={handleRecovery}
+          onManageCharacters={openCharacterManager}
         />
       }>
         <Route index element={
@@ -152,6 +228,9 @@ function App() {
         } />
         <Route path="tribes" element={
           <TribesListPage userId={userId} onRefreshUser={refreshUser} />
+        } />
+        <Route path="leaderboard" element={
+          <LeaderboardPage users={allUsers} currentUserId={userId} />
         } />
         <Route path="tribes/:id" element={
           <TribePage userId={userId} onRefreshUser={refreshUser} />

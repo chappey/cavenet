@@ -16,6 +16,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onRefreshUser, onPost
   const { id } = useParams<{ id: string }>();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'threads' | 'tribes'>('threads');
 
   // Use route param if present, otherwise use logged-in user
@@ -26,10 +27,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onRefreshUser, onPost
     if (!profileId) return;
     try {
       setLoading(true);
+      setError(null);
       const data = await apiFetch(`/users/${profileId}`);
       setProfile(data);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to load profile', e);
+      setError(e.message || 'Failed to find this cave man.');
     } finally {
       setLoading(false);
     }
@@ -54,7 +57,24 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onRefreshUser, onPost
     }
   };
 
-  if (loading && !profile) return <div className="loading-state">Loading cave...</div>;
+  if (loading && !profile) return (
+    <div className="loading-state">
+      <div className="spinner">🔥</div>
+      <p>Entering the cave...</p>
+    </div>
+  );
+
+  if (error && !profile) return (
+    <div className="error-state">
+      <div className="error-icon">🌪️</div>
+      <h3>Cave Entry Blocked</h3>
+      <p>{error}</p>
+      <button className="btn-carve" onClick={fetchProfile}>
+        🔄 Try Entering Again
+      </button>
+    </div>
+  );
+
   if (!profile) return <div className="error-state">Caveman not found</div>;
 
   return (

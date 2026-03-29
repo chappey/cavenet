@@ -39,10 +39,10 @@ interface LayoutProps {
   user: any;
   users: any[];
   onSwitchUser: (id: string) => void;
-  onRecovery: () => void;
+  onManageCharacters: () => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ user, users, onSwitchUser, onRecovery }) => {
+const Layout: React.FC<LayoutProps> = ({ user, users, onSwitchUser, onManageCharacters }) => {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [caveTime, setCaveTime] = useState(getCaveTime());
@@ -102,8 +102,18 @@ const Layout: React.FC<LayoutProps> = ({ user, users, onSwitchUser, onRecovery }
 
             {user && (
               <div className="nav-resources desktop-only">
-                <span className="resource" title="Food">🍖 {user.food}</span>
-                <span className="resource" title="Fire">🔥 {user.fire}</span>
+                <div className="resource-tooltip-wrap">
+                  <span className="resource">🍖 {user.food}</span>
+                  <div className="resource-tooltip">
+                    <strong className="resource-tooltip-label food">Food</strong> is spent to create threads and tribes. Replies and likes can help you earn more.
+                  </div>
+                </div>
+                <div className="resource-tooltip-wrap">
+                  <span className="resource">🔥 {user.fire}</span>
+                  <div className="resource-tooltip">
+                    <strong className="resource-tooltip-label fire">Fire</strong> is earned from replies and likes. It powers your status and thread growth.
+                  </div>
+                </div>
               </div>
             )}
 
@@ -125,7 +135,7 @@ const Layout: React.FC<LayoutProps> = ({ user, users, onSwitchUser, onRecovery }
               {switcherOpen && (
                 <div className="switcher-dropdown">
                   <div className="switcher-label">Switch Caveman</div>
-                  {users.map(u => (
+                  {users.filter(u => u.isPlayerCharacter).map(u => (
                     <button
                       key={u.id}
                       className={`switcher-option ${u.id === user?.id ? 'selected' : ''}`}
@@ -141,9 +151,12 @@ const Layout: React.FC<LayoutProps> = ({ user, users, onSwitchUser, onRecovery }
                       </span>
                     </button>
                   ))}
+                  {users.filter(u => u.isPlayerCharacter).length === 0 && (
+                    <div className="switcher-empty">No player characters yet.</div>
+                  )}
                   <div className="switcher-divider" />
-                  <button className="switcher-option recovery" onClick={() => { onRecovery(); setSwitcherOpen(false); }}>
-                    🔄 Emergency Recovery
+                  <button className="switcher-option manage" onClick={() => { onManageCharacters(); setSwitcherOpen(false); }}>
+                    🧭 Manage Characters
                   </button>
                 </div>
               )}

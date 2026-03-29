@@ -4,6 +4,7 @@ import { users, threads, replies, likes, tribes, userTribes, userThreadStats, us
 import { eq, desc, sql, and, inArray } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import { simulatedDaysBetween, TIME_SCALE } from './time';
+import { generateThreadDraft, generateThreadReplies, isGoogleGenAIConfigured, pickReplyMood } from './ai';
 
 // ── Constants ──
 
@@ -15,7 +16,6 @@ const POST_COST = {
 
 const TRIBE_CREATION_COST = 3;
 const THREAD_FIRE_CAP = 20;
-const LIKE_FIRE_CAP = 5;
 const FIRE_DECAY_PER_DAY = 1;
 
 // ── Helpers ──
@@ -30,6 +30,185 @@ const daysBetweenUtc = (older: Date, newer: Date) => {
 const normalizeReply = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
 
 const contentHash = (value: string) => createHash('sha256').update(normalizeReply(value)).digest('hex');
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+const scoreThreadQuality = (title: string | null | undefined, content: string) => {
+  const text = `${title ?? ''} ${content}`.trim();
+  if (!text) return 0;
+
+  const words = text.split(/\s+/).filter(Boolean);
+  const uniqueWords = new Set(words.map(word => word.toLowerCase().replace(/[^a-z0-9']/g, '')));
+  const sentences = content.split(/[.!?]+/).filter(sentence => sentence.trim()).length;
+  const hasQuestion = /\?/.test(content);
+  const hasExclaim = /!/.test(content);
+  const hasSpecificDetail = /\b(shiny|berry|fire|mammoth|spear|hunt|rock|paint|cave|moon|blood|bone)\b/i.test(text);
+  const hasTitle = Boolean(title?.trim());
+
+  let score = 0;
+  score += clamp(Math.round(words.length * 1.2), 0, 30);
+  score += clamp(Math.round(uniqueWords.size * 1.1), 0, 18);
+  score += hasTitle ? 6 : 0;
+  score += hasQuestion ? 8 : 0;
+  score += hasExclaim ? 6 : 0;
+  score += sentences >= 2 ? 10 : 0;
+  score += hasSpecificDetail ? 8 : 0;
+  score += content.length >= 80 ? 6 : 0;
+  score += content.length >= 140 ? 6 : 0;
+  score += content.length < 20 ? -30 : 0;
+  score += content.length < 8 ? -20 : 0;
+
+  return clamp(score, 0, 100);
+};
+
+const getReplyTargetFromQuality = (qualityScore: number, availableNpcCount: number) => {
+  if (qualityScore < 25) return 0;
+  const tierTarget = qualityScore < 45 ? 1 : qualityScore < 60 ? 2 : qualityScore < 75 ? 3 : qualityScore < 90 ? 4 : 5;
+  return Math.min(availableNpcCount, tierTarget, 5);
+};
+
+const getReplyFireReward = (qualityScore: number, isOwnerReply: boolean) => {
+  if (qualityScore < 25) return 0;
+  if (qualityScore < 45) return isOwnerReply ? 1 : 1;
+  if (qualityScore < 70) return isOwnerReply ? 2 : 2;
+  if (qualityScore < 85) return isOwnerReply ? 3 : 3;
+  return isOwnerReply ? 4 : 4;
+};
+
+const getLikeFireCap = (qualityScore: number, availableUsers: number) => {
+  if (qualityScore < 25) return 0;
+  const cap = qualityScore < 45 ? 1 : qualityScore < 70 ? 3 : qualityScore < 85 ? 5 : 7;
+  return Math.min(cap, Math.max(0, availableUsers - 1));
+};
+
+const shuffle = <T,>(items: T[]) => {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+};
+
+const insertThreadReply = async (tx: typeof db, {
+  threadId,
+  creatorId,
+  content,
+  isUniqueOverride,
+}: {
+  threadId: string;
+  creatorId: string;
+  content: string;
+  isUniqueOverride?: boolean;
+}) => {
+  const hash = contentHash(content);
+  const indexRows = await tx.select({
+    nextIndex: sql<number>`COALESCE(MAX(${replies.replyIndex}), 0) + 1`
+  })
+    .from(replies)
+    .where(eq(replies.threadId, threadId));
+  const replyIndex = indexRows[0]?.nextIndex ?? 1;
+
+  const duplicateHashReply = await tx.query.replies.findFirst({
+    where: and(eq(replies.threadId, threadId), eq(replies.contentHash, hash))
+  });
+  const isUnique = isUniqueOverride ?? !duplicateHashReply;
+
+  const [reply] = await tx.insert(replies).values({
+    threadId,
+    creatorId,
+    content,
+    contentHash: hash,
+    replyIndex,
+    isUnique,
+    fireGenerated: 0,
+  }).returning();
+
+  return reply;
+};
+
+const applyReplyRewards = async (
+  tx: typeof db,
+  { reply, thread, qualityScore }: {
+    reply: { id: string; creatorId: string; isUnique: boolean };
+    thread: { id: string; creatorId: string };
+    qualityScore: number;
+  }
+) => {
+  let fireAwardedToOwner = 0;
+  let fireAwardedToReplier = 0;
+
+  const isOwnerReply = thread.creatorId === reply.creatorId;
+  if (isOwnerReply) {
+    const ownerEvent = await tx.insert(rewardEvents)
+      .values({ type: 'reply_op', refId: reply.id })
+      .onConflictDoNothing()
+      .returning();
+
+    if (ownerEvent.length > 0) {
+			fireAwardedToReplier = await grantThreadFire(tx, reply.creatorId, thread.id, getReplyFireReward(qualityScore, true));
+    }
+  } else {
+    const replierEvent = await tx.insert(rewardEvents)
+      .values({ type: 'reply_replier', refId: reply.id })
+      .onConflictDoNothing()
+      .returning();
+
+    if (replierEvent.length > 0) {
+			fireAwardedToReplier = await grantThreadFire(tx, reply.creatorId, thread.id, getReplyFireReward(qualityScore, false));
+    }
+
+    if (reply.isUnique) {
+      const ownerEvent = await tx.insert(rewardEvents)
+        .values({ type: 'reply_owner', refId: reply.id })
+        .onConflictDoNothing()
+        .returning();
+
+      if (ownerEvent.length > 0) {
+				fireAwardedToOwner = await grantThreadFire(tx, thread.creatorId, thread.id, getReplyFireReward(qualityScore, true));
+      }
+    }
+  }
+
+  return { fireAwardedToOwner, fireAwardedToReplier };
+};
+
+const generateThreadAiReplies = async (thread: typeof threads.$inferSelect, creatorUsername: string, qualityScore: number) => {
+  if (!isGoogleGenAIConfigured()) return null;
+
+  const npcProfiles = (await db.select({
+    id: users.id,
+    username: users.username,
+    bio: users.bio,
+    isPlayerCharacter: users.isPlayerCharacter,
+  })
+    .from(users)
+    .orderBy(users.username))
+    .filter((user) => user.id !== thread.creatorId && !user.isPlayerCharacter)
+    .slice(0, 5)
+    .map((user) => ({ username: user.username, bio: user.bio ?? '' }));
+
+  const replyTarget = getReplyTargetFromQuality(qualityScore, npcProfiles.length);
+  if (replyTarget <= 0) return null;
+
+	const aiProfiles = shuffle(npcProfiles).slice(0, replyTarget);
+
+	const mood = pickReplyMood(qualityScore);
+
+  const generatedReplies = await generateThreadReplies({
+    threadTitle: thread.title,
+    threadContent: thread.content,
+    threadType: thread.type,
+    creatorUsername,
+    profiles: aiProfiles,
+		mood,
+		qualityScore,
+  });
+
+  return { generatedReplies, mood, qualityScore };
+};
 
 const getThreadAllowance = async (tx: typeof db, userId: string, threadId: string) => {
   const row = await tx.query.userThreadStats.findFirst({
@@ -203,10 +382,31 @@ const app = new Elysia()
         username: users.username,
         bio: users.bio,
         avatar: users.avatar,
+        isPlayerCharacter: users.isPlayerCharacter,
         food: users.food,
         fire: users.fire,
         createdAt: users.createdAt,
       }).from(users).orderBy(users.username);
+    })
+
+    .post('/users', async ({ body }) => {
+      const username = body.username.trim();
+      if (!username) throw new Error('Character name is required');
+
+      const [created] = await db.insert(users).values({
+        username,
+        bio: body.bio ?? '',
+        avatar: body.avatar ?? '',
+        isPlayerCharacter: true,
+      }).returning();
+
+      return created;
+    }, {
+      body: t.Object({
+        username: t.String(),
+        bio: t.Optional(t.String()),
+        avatar: t.Optional(t.String()),
+      })
     })
 
     .get('/me', async ({ userId }) => {
@@ -257,6 +457,15 @@ const app = new Elysia()
       body: t.Object({
         bio: t.String(),
       })
+    })
+
+    .delete('/users/:id', async ({ params }) => {
+      const target = await db.query.users.findFirst({ where: eq(users.id, params.id) });
+      if (!target) throw new Error('Character not found');
+      if (!target.isPlayerCharacter) throw new Error('Only player-created characters can be removed');
+
+      await db.delete(users).where(eq(users.id, params.id));
+      return { status: 'deleted' as const };
     })
 
     // ── Feed ──
@@ -324,6 +533,48 @@ const app = new Elysia()
         return newThread;
       });
 
+      const creator = await db.query.users.findFirst({ where: eq(users.id, userId) });
+      const creatorUsername = creator?.username ?? 'Unknown';
+      const qualityScore = scoreThreadQuality(thread.title ?? null, thread.content ?? '');
+
+      void (async () => {
+        try {
+          const aiReplyBatch = await generateThreadAiReplies(thread, creatorUsername, qualityScore);
+          if (!aiReplyBatch || aiReplyBatch.generatedReplies.length === 0) return;
+
+          const { generatedReplies } = aiReplyBatch;
+
+          for (const [index, aiReply] of generatedReplies.entries()) {
+            const delay = 650 + (index * 900) + Math.floor(Math.random() * 600);
+            await sleep(delay);
+
+            await db.transaction(async (tx) => {
+              const profile = await tx.query.users.findFirst({ where: eq(users.username, aiReply.username) });
+              if (!profile) return;
+
+              const reply = await insertThreadReply(tx, {
+                threadId: thread.id,
+                creatorId: profile.id,
+                content: aiReply.content,
+                isUniqueOverride: true,
+              });
+
+              const rewards = await applyReplyRewards(tx, {
+                reply,
+                thread: { id: thread.id, creatorId: thread.creatorId },
+                qualityScore,
+              });
+
+              await tx.update(replies)
+                .set({ fireGenerated: rewards.fireAwardedToReplier })
+                .where(eq(replies.id, reply.id));
+            });
+          }
+        } catch (error) {
+          console.error('[ai-thread-replies] generation failed:', error);
+        }
+      })();
+
       return thread;
     }, {
       body: t.Object({
@@ -383,87 +634,34 @@ const app = new Elysia()
     .post('/threads/:id/replies', async ({ params, body, userId }) => {
       if (!userId) throw new Error('No user selected');
       const threadId = params.id;
-      const hash = contentHash(body.content);
 
       const result = await db.transaction(async (tx) => {
         const thread = await tx.query.threads.findFirst({ where: eq(threads.id, threadId) });
         if (!thread) throw new Error('Thread not found');
 
-        const indexRows = await tx.select({
-          nextIndex: sql<number>`COALESCE(MAX(${replies.replyIndex}), 0) + 1`
-        })
-          .from(replies)
-          .where(eq(replies.threadId, threadId));
-        const replyIndex = indexRows[0]?.nextIndex ?? 1;
+		const reply = await insertThreadReply(tx, {
+			threadId,
+			creatorId: userId,
+			content: body.content,
+		});
+		const qualityScore = scoreThreadQuality(thread.title ?? null, thread.content ?? '');
 
-        const duplicateHashReply = await tx.query.replies.findFirst({
-          where: and(eq(replies.threadId, threadId), eq(replies.contentHash, hash))
+        const rewards = await applyReplyRewards(tx, {
+          reply,
+          thread: { id: thread.id, creatorId: thread.creatorId },
+          qualityScore,
         });
-        const isUnique = !duplicateHashReply;
-
-        const [reply] = await tx.insert(replies).values({
-          threadId,
-          creatorId: userId,
-          content: body.content,
-          contentHash: hash,
-          replyIndex,
-          isUnique,
-          fireGenerated: 0,
-        }).returning();
-
-        let fireAwardedToReplier = 0;
-        let fireAwardedToOwner = 0;
-
-        const isOwnerReply = thread.creatorId === userId;
-        if (isOwnerReply) {
-          const ownerEvent = await tx.insert(rewardEvents)
-            .values({ type: 'reply_op', refId: reply.id })
-            .onConflictDoNothing()
-            .returning();
-
-          if (ownerEvent.length > 0) {
-            fireAwardedToReplier = await grantThreadFire(tx, userId, threadId, 1);
-          }
-        } else {
-          const replierCountRows = await tx.select({
-            count: sql<number>`COUNT(*)`
-          })
-            .from(replies)
-            .where(and(eq(replies.threadId, threadId), eq(replies.creatorId, userId)));
-          const replierCount = replierCountRows[0]?.count ?? 1;
-          const baseReward = Math.max(3 - (replierCount - 1), 1);
-
-          const replierEvent = await tx.insert(rewardEvents)
-            .values({ type: 'reply_replier', refId: reply.id })
-            .onConflictDoNothing()
-            .returning();
-
-          if (replierEvent.length > 0) {
-            fireAwardedToReplier = await grantThreadFire(tx, userId, threadId, baseReward);
-          }
-
-          if (isUnique) {
-            const ownerEvent = await tx.insert(rewardEvents)
-              .values({ type: 'reply_owner', refId: reply.id })
-              .onConflictDoNothing()
-              .returning();
-
-            if (ownerEvent.length > 0) {
-              fireAwardedToOwner = await grantThreadFire(tx, thread.creatorId, threadId, 2);
-            }
-          }
-        }
 
         await tx.update(replies)
-          .set({ fireGenerated: fireAwardedToReplier })
+          .set({ fireGenerated: rewards.fireAwardedToReplier })
           .where(eq(replies.id, reply.id));
 
         await markUserActive(tx, userId);
 
         return {
           ...reply,
-          fireGenerated: fireAwardedToReplier,
-          ownerFireAwarded: fireAwardedToOwner,
+          fireGenerated: rewards.fireAwardedToReplier,
+          ownerFireAwarded: rewards.fireAwardedToOwner,
         };
       });
 
@@ -492,25 +690,30 @@ const app = new Elysia()
 
         const replyRow = await tx.query.replies.findFirst({ where: eq(replies.id, replyId) });
         if (!replyRow) throw new Error('Reply not found');
+        const threadRow = await tx.query.threads.findFirst({ where: eq(threads.id, replyRow.threadId) });
+        const qualityScore = scoreThreadQuality(threadRow?.title ?? null, threadRow?.content ?? '');
+        const userCountRows = await tx.select({ count: sql<number>`COUNT(*)` }).from(users);
+        const userCount = userCountRows[0]?.count ?? 0;
 
         // Update like count on reply
         await tx.update(replies)
           .set({ likes: sql`${replies.likes} + 1` })
           .where(eq(replies.id, replyId));
 
-        // Award fire to reply creator (capped per-reply at LIKE_FIRE_CAP)
+        // Award fire to reply creator (capped by post quality and population)
         let awardedFire = 0;
         const currentLikes = replyRow.likes ?? 0;
-        if (currentLikes < LIKE_FIRE_CAP) {
+        const likeFireCap = getLikeFireCap(qualityScore, userCount);
+        if (currentLikes < likeFireCap) {
           awardedFire = 1;
           await tx.update(users)
             .set({ fire: sql`${users.fire} + 1` })
             .where(eq(users.id, replyRow.creatorId));
         }
 
-        // Like conversion: spend random(2..3) fire to gain +1 food
+        // Like conversion: spend available fire to gain +1 food (prefer 2..3 when possible)
         const liker = await tx.query.users.findFirst({ where: eq(users.id, userId) });
-        if (liker && liker.fire >= 2) {
+        if (liker && liker.fire > 0) {
           const roll = Math.random() < 0.5 ? 2 : 3;
           const cost = Math.min(roll, liker.fire);
           await tx.update(users)
@@ -671,6 +874,20 @@ const app = new Elysia()
       });
 
       return { reward };
+    })
+
+    // ── AI ──
+
+    .post('/ai/thread-draft', async ({ body }) => {
+      if (!isGoogleGenAIConfigured()) {
+        throw new Error('Missing Gemini API key');
+      }
+
+      return await generateThreadDraft(body.prompt);
+    }, {
+      body: t.Object({
+        prompt: t.String(),
+      }),
     })
   )
 

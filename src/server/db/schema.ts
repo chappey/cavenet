@@ -5,6 +5,7 @@ export const users = sqliteTable('users', {
   username: text('username').notNull().unique(),
   bio: text('bio').default(''),
   avatar: text('avatar').default(''),
+  isPlayerCharacter: integer('is_player_character', { mode: 'boolean' }).notNull().default(false),
   food: integer('food').notNull().default(10),
   fire: integer('fire').notNull().default(0),
   lastActiveAt: integer('last_active_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),

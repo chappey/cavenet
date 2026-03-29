@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import ThreadCard from '../components/ThreadCard';
 import Composer from '../components/Composer';
 
@@ -16,6 +17,12 @@ const HomePage: React.FC<HomePageProps> = ({ feed, onPost, onSortChange, current
       <div className="content-header">
         <h1>🏔️ Cave Wall</h1>
         <p className="content-subtitle">All posts from the land</p>
+      </div>
+
+      <div className="home-actions">
+        <Link to="/leaderboard" className="btn-carve home-leaderboard-btn">
+          🏆 View Leaderboard
+        </Link>
       </div>
 
       {/* Sort controls */}
