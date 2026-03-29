@@ -17,6 +17,39 @@ export type AiReplyDraft = {
 	content: string;
 };
 
+export type ReplyMood = 'hyped' | 'skeptical' | 'wise' | 'jealous' | 'goofy';
+
+const getQualityBand = (qualityScore: number) => {
+	if (qualityScore < 25) return 'terrible';
+	if (qualityScore < 45) return 'weak';
+	if (qualityScore < 70) return 'solid';
+	if (qualityScore < 85) return 'strong';
+	return 'legendary';
+};
+
+const REPLY_MOODS: Record<ReplyMood, string> = {
+	hyped: [
+		'Be loud, excited, and supportive.',
+		'Use quick bursts, exclamation marks, and caveman hype.',
+	].join('\n'),
+	skeptical: [
+		'Be a little suspicious or doubtful, but still playful.',
+		'Use shorter lines and a side-eye vibe.',
+	].join('\n'),
+	wise: [
+		'Speak like an old cave elder with calm confidence.',
+		'Give a grounded, thoughtful reaction.',
+	].join('\n'),
+	jealous: [
+		'Be competitive, braggy, and a little envious.',
+		'React like you want the same thing or want to one-up the post.',
+	].join('\n'),
+	goofy: [
+		'Be weird, silly, and a little chaotic in a harmless way.',
+		'Use funny cave nonsense and odd little observations.',
+	].join('\n'),
+};
+
 const apiKey = Bun.env.GEMINI_API_KEY ?? Bun.env.GOOGLE_API_KEY;
 const preferredModel = Bun.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
 const client = apiKey ? new GoogleGenAI({ apiKey }) : null;
@@ -31,6 +64,30 @@ export const CAVEMAN_REPLY_PREAMBLE = [
 	'Use short, punchy, playful caveman language.',
 	'React to the original post directly and do not mention AI.',
 	'Keep each reply to 1-2 sentences max.',
+].join('\n');
+
+export const pickReplyMood = (qualityScore: number): ReplyMood => {
+	if (qualityScore < 25) {
+		return Math.random() < 0.5 ? 'skeptical' : 'goofy';
+	}
+
+	if (qualityScore < 45) {
+		return ['skeptical', 'goofy', 'wise'][Math.floor(Math.random() * 3)] as ReplyMood;
+	}
+
+	if (qualityScore < 70) {
+		return ['wise', 'hyped', 'goofy'][Math.floor(Math.random() * 3)] as ReplyMood;
+	}
+
+	return ['hyped', 'jealous', 'goofy', 'wise'][Math.floor(Math.random() * 4)] as ReplyMood;
+};
+
+export const buildReplyPreamble = (mood: ReplyMood, qualityScore: number) => [
+	CAVEMAN_REPLY_PREAMBLE,
+	'',
+	`Perceived post quality: ${qualityScore}/100 (${getQualityBand(qualityScore)})`,
+	`Mood: ${mood}`,
+	REPLY_MOODS[mood],
 ].join('\n');
 
 const parseDraft = (text: string): ThreadDraft => {
@@ -119,6 +176,8 @@ export const generateThreadReplies = async ({
 	threadType,
 	creatorUsername,
 	profiles,
+	mood,
+	qualityScore,
 	maxReplies = profiles.length,
 }: {
 	threadTitle: string | null;
@@ -126,6 +185,8 @@ export const generateThreadReplies = async ({
 	threadType: string;
 	creatorUsername: string;
 	profiles: AiReplyProfile[];
+	mood: ReplyMood;
+	qualityScore: number;
 	maxReplies?: number;
 }) => {
 	if (!client) {
@@ -142,7 +203,7 @@ export const generateThreadReplies = async ({
 		.join('\n');
 
 	const prompt = [
-		CAVEMAN_REPLY_PREAMBLE,
+		buildReplyPreamble(mood, qualityScore),
 		'',
 		'Generate one reply per listed profile.',
 		'Use the exact usernames provided.',
@@ -153,6 +214,7 @@ export const generateThreadReplies = async ({
 		`Original post title: ${threadTitle ?? '(no title)'}`,
 		`Original post type: ${threadType}`,
 		`Original post content: ${threadContent ?? ''}`,
+		`Perceived post quality score: ${qualityScore}/100`,
 		'',
 		'Replying profiles:',
 		profilePrompt,

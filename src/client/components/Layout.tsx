@@ -102,8 +102,18 @@ const Layout: React.FC<LayoutProps> = ({ user, users, onSwitchUser, onManageChar
 
             {user && (
               <div className="nav-resources desktop-only">
-                <span className="resource" title="Food">🍖 {user.food}</span>
-                <span className="resource" title="Fire">🔥 {user.fire}</span>
+                <div className="resource-tooltip-wrap">
+                  <span className="resource">🍖 {user.food}</span>
+                  <div className="resource-tooltip">
+                    <strong className="resource-tooltip-label food">Food</strong> is spent to create threads and tribes. Replies and likes can help you earn more.
+                  </div>
+                </div>
+                <div className="resource-tooltip-wrap">
+                  <span className="resource">🔥 {user.fire}</span>
+                  <div className="resource-tooltip">
+                    <strong className="resource-tooltip-label fire">Fire</strong> is earned from replies and likes. It powers your status and thread growth.
+                  </div>
+                </div>
               </div>
             )}
 
