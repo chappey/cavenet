@@ -17,6 +17,11 @@ export type AiReplyDraft = {
 	content: string;
 };
 
+export type CharacterDraft = {
+	username: string;
+	bio: string;
+};
+
 export type ReplyMood = 'hyped' | 'skeptical' | 'wise' | 'jealous' | 'goofy';
 
 const getQualityBand = (qualityScore: number) => {
@@ -57,6 +62,30 @@ const fallbackModels = [preferredModel, 'gemini-2.5-flash', 'gemini-2.0-flash']
 	.filter((value, index, self) => self.indexOf(value) === index);
 
 const jsonBlock = /```(?:json)?\s*([\s\S]*?)```/i;
+
+const caveNames = [
+	'Grok',
+	'Brakka',
+	'Zog',
+	'Koro',
+	'Munka',
+	'Daka',
+	'Hruk',
+	'Runa',
+	'Voga',
+	'Tuma',
+];
+
+const caveTitles = [
+	'Fire Finder',
+	'Berry Hunter',
+	'Rock Painter',
+	'Mammoth Whisperer',
+	'Spear Dreamer',
+	'Moon Watcher',
+	'Bone Collector',
+	'Camp Builder',
+];
 
 export const CAVEMAN_REPLY_PREAMBLE = [
 	'You are writing replies for Cavenet, a caveman social feed.',
@@ -121,6 +150,23 @@ const parseReplyDrafts = (text: string): AiReplyDraft[] => {
 		.filter((reply) => reply.username.length > 0 && reply.content.length > 0);
 };
 
+const buildLocalCharacterDraft = (): CharacterDraft => {
+	const username = `${caveNames[Math.floor(Math.random() * caveNames.length)]}-${Math.floor(Math.random() * 98) + 1}`;
+	const title = caveTitles[Math.floor(Math.random() * caveTitles.length)];
+	const bioBits = [
+		'Likes warm fire and loud gossip.',
+		'Always first to the berry patch.',
+		'Grunts big and thinks bigger.',
+		'Has strong opinions about rocks.',
+		'Collects shiny things and cave stories.',
+	];
+
+	return {
+		username,
+		bio: `${title}. ${bioBits[Math.floor(Math.random() * bioBits.length)]}`,
+	};
+};
+
 export const isGoogleGenAIConfigured = () => client !== null;
 
 export const generateThreadDraft = async (prompt: string) => {
@@ -168,6 +214,65 @@ export const generateThreadDraft = async (prompt: string) => {
 	}
 
 	throw lastError instanceof Error ? lastError : new Error('Google GenAI request failed.');
+};
+
+export const generateCharacterDraft = async () => {
+	if (!client) {
+		return buildLocalCharacterDraft();
+	}
+
+	let lastError: unknown;
+	for (const model of fallbackModels) {
+		try {
+			const response = await client.models.generateContent({
+				model,
+				contents: [
+					{
+						role: 'user',
+						parts: [
+							{
+								text: [
+									'Create one original caveman character for Cavenet.',
+									'Return only valid JSON with keys: username, bio.',
+									'Keep the username short and playful.',
+									'Keep the bio to one sentence.',
+								].join('\n'),
+							},
+						],
+					},
+				],
+			});
+
+			const text = response.text?.trim();
+			if (!text) {
+				throw new Error('Google GenAI returned an empty response.');
+			}
+
+			const fenced = text.match(jsonBlock)?.[1] ?? text;
+			const start = fenced.indexOf('{');
+			const end = fenced.lastIndexOf('}');
+			const raw = start >= 0 && end >= 0 ? fenced.slice(start, end + 1) : fenced;
+			const parsed = JSON.parse(raw) as Partial<CharacterDraft>;
+
+			const username = String(parsed.username ?? '').trim().slice(0, 24);
+			const bio = String(parsed.bio ?? '').trim().slice(0, 180);
+
+			if (!username || !bio) {
+				throw new Error('Google GenAI returned an invalid character draft.');
+			}
+
+			return { username, bio };
+		} catch (error) {
+			lastError = error;
+			const message = error instanceof Error ? error.message : String(error);
+			const isModelMismatch = /not found|not supported/i.test(message);
+			if (!isModelMismatch || model === fallbackModels[fallbackModels.length - 1]) {
+				break;
+			}
+		}
+	}
+
+	return buildLocalCharacterDraft();
 };
 
 export const generateThreadReplies = async ({

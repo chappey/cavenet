@@ -4,7 +4,7 @@ import { users, threads, replies, likes, tribes, userTribes, userThreadStats, us
 import { eq, desc, sql, and, inArray } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import { simulatedDaysBetween, TIME_SCALE } from './time';
-import { generateThreadDraft, generateThreadReplies, isGoogleGenAIConfigured, pickReplyMood } from './ai';
+import { generateCharacterDraft, generateThreadDraft, generateThreadReplies, isGoogleGenAIConfigured, pickReplyMood } from './ai';
 
 // ── Constants ──
 
@@ -1001,6 +1001,10 @@ const app = new Elysia()
       body: t.Object({
         prompt: t.String(),
       }),
+    })
+
+    .post('/ai/character-draft', async () => {
+      return await generateCharacterDraft();
     })
   )
 

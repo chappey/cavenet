@@ -174,12 +174,17 @@ function App() {
   // Show loading state if we have no users yet
   if (loading && allUsers.length === 0) {
     return (
-      <div className="loading-screen">
-        <div className="loading-content">
-          <div className="spinner">🔥</div>
-          <p>Lighting the torches...</p>
-        </div>
-      </div>
+      <CharacterSelect
+        users={allUsers}
+        mode="select"
+        loading
+        currentUserId={userId}
+        onSelect={handleSwitchUser}
+        onCreateCharacter={handleCreateCharacter}
+        onDeleteCharacter={handleDeleteCharacter}
+        onOpenManage={openCharacterManager}
+        onClose={closeCharacterPanel}
+      />
     );
   }
 
