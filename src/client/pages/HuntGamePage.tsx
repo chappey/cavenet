@@ -64,7 +64,7 @@ const HuntGamePage: React.FC<HuntGamePageProps> = ({ userId, onRefreshUser }) =>
       claimedRef.current = true;
       setClaiming(true);
       try {
-        const result = await apiFetch('/games/hunt/claim', {
+        const result = await apiFetch<{ status: 'claimed' | 'already_claimed'; fireReward: number }>('/games/hunt/claim', {
           method: 'POST',
           body: JSON.stringify({
             runId: runIdRef.current,

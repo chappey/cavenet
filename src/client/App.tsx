@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { apiFetch, setCurrentUserId, getCurrentUserId } from './lib/api';
+import type { CreateCharacterInput, CreateThreadInput } from 'src/shared/contracts';
 import Layout from './components/Layout';
 import CharacterSelect from './pages/CharacterSelect';
 import HomePage from './pages/HomePage';
@@ -25,7 +26,7 @@ function App() {
   const fetchUsers = useCallback(async () => {
     try {
       const activeUserId = getCurrentUserId();
-      const data = await apiFetch('/users');
+      const data = await apiFetch<any[]>('/users');
       setAllUsers(data);
       if (activeUserId && !data.some((u: any) => u.id === activeUserId)) {
         setCurrentUserId(null);
@@ -44,7 +45,7 @@ function App() {
   const fetchMe = useCallback(async () => {
     if (!userId) { setUser(null); return; }
     try {
-      const data = await apiFetch('/me');
+      const data = await apiFetch<any | null>('/me');
       setUser(data);
     } catch (e: any) {
       console.error('Failed to load user', e);
@@ -54,7 +55,7 @@ function App() {
   const fetchFeed = useCallback(async (sort?: string) => {
     try {
       const s = sort ?? currentSort;
-      const data = await apiFetch(`/feed?sort=${s}`);
+      const data = await apiFetch<any[]>(`/feed?sort=${s}`);
       setFeed(data);
     } catch (e: any) {
       console.error('Failed to load feed', e);
@@ -87,8 +88,8 @@ function App() {
     setCharacterPanelMode(null);
   };
 
-  const handleCreateCharacter = async (input: { username: string; bio: string; avatar?: string }) => {
-    const created = await apiFetch('/users', {
+  const handleCreateCharacter = async (input: CreateCharacterInput) => {
+    const created = await apiFetch<{ id: string }>('/users', {
       method: 'POST',
       body: JSON.stringify(input),
     });
@@ -96,7 +97,6 @@ function App() {
     setCurrentUserId(created.id);
     setUserId(created.id);
     setCharacterPanelMode(null);
-    return created;
   };
 
   const handleDeleteCharacter = async (id: string) => {
@@ -125,13 +125,15 @@ function App() {
       return;
     }
     try {
+      const payload: CreateThreadInput = {
+        type: 'text',
+        content,
+        title: title || content.substring(0, 40),
+      };
+
       await apiFetch('/threads', {
         method: 'POST',
-        body: JSON.stringify({
-          type: 'text',
-          content,
-          title: title || content.substring(0, 40),
-        }),
+        body: JSON.stringify(payload),
       });
       await Promise.all([fetchFeed(), fetchMe(), fetchUsers()]);
     } catch (e: any) {

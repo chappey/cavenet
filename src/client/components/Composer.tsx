@@ -69,7 +69,7 @@ const Composer: React.FC<ComposerProps> = ({
           onClick={handleSubmit}
           disabled={!content.trim() || submitting || disabled}
         >
-          {submitting ? '...' : '🪨 Carve'}
+          {submitting ? '⏳ Carving...' : '🪨 Carve'}
         </button>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { createHash } from 'node:crypto';
 
 export type ThreadDraft = {
 	title: string;
@@ -56,11 +57,100 @@ const REPLY_MOODS: Record<ReplyMood, string> = {
 };
 
 const apiKey = Bun.env.GEMINI_API_KEY ?? Bun.env.GOOGLE_API_KEY;
-const preferredModel = Bun.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
-const aiDisabled = ['1', 'true', 'yes', 'on'].includes(String(Bun.env.CAVENET_DISABLE_AI ?? Bun.env.DISABLE_AI ?? '').toLowerCase());
 const client = apiKey ? new GoogleGenAI({ apiKey }) : null;
-const fallbackModels = [preferredModel, 'gemini-2.5-flash', 'gemini-2.0-flash']
-	.filter((value, index, self) => self.indexOf(value) === index);
+
+const getAiConfig = () => {
+	const preferredModel = Bun.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
+	const aiDisabled = ['1', 'true', 'yes', 'on'].includes(String(Bun.env.CAVENET_DISABLE_AI ?? Bun.env.DISABLE_AI ?? '').toLowerCase());
+	const fallbackModels = [preferredModel, 'gemini-2.5-flash', 'gemini-2.0-flash']
+		.filter((value, index, self) => self.indexOf(value) === index);
+
+	return { aiDisabled, fallbackModels };
+};
+
+const REMOTE_AI_MIN_INTERVAL_MS = 1_500;
+const REMOTE_AI_CACHE_TTL_MS = 30_000;
+const REMOTE_AI_BACKOFF_MS = 60_000;
+
+let remoteAiChain: Promise<void> = Promise.resolve();
+let remoteAiLastStartedAt = 0;
+let remoteAiBackoffUntil = 0;
+
+const remoteAiPending = new Map<string, Promise<unknown>>();
+const remoteAiCache = new Map<string, { expiresAt: number; value: unknown }>();
+
+const hashAiRequest = (kind: string, value: string) => createHash('sha256').update(`${kind}:${value}`).digest('hex');
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const enqueueRemoteAiTask = <T>(task: () => Promise<T>) => {
+	const next = remoteAiChain.then(task, task);
+	remoteAiChain = next.then(() => undefined, () => undefined);
+	return next;
+};
+
+const isQuotaOrRateLimitError = (error: unknown) => {
+	const message = error instanceof Error ? error.message : String(error);
+	return /(?:429|quota|rate limit|resource exhausted|too many requests)/i.test(message);
+};
+
+const runRemoteAiRequest = async <T>({
+	key,
+	label,
+	fallback,
+	task,
+}: {
+	key: string;
+	label: string;
+	fallback: () => T;
+	task: (fallbackModels: string[]) => Promise<T>;
+}) => {
+	const { aiDisabled, fallbackModels } = getAiConfig();
+	if (!client || aiDisabled) {
+		return fallback();
+	}
+
+	const cached = remoteAiCache.get(key);
+	if (cached && cached.expiresAt > Date.now()) {
+		return cached.value as T;
+	}
+
+	const pending = remoteAiPending.get(key);
+	if (pending) {
+		return pending as Promise<T>;
+	}
+
+	const request = enqueueRemoteAiTask(async () => {
+		const waitUntil = Math.max(remoteAiBackoffUntil, remoteAiLastStartedAt + REMOTE_AI_MIN_INTERVAL_MS);
+		const waitMs = waitUntil - Date.now();
+		if (waitMs > 0) {
+			await sleep(waitMs);
+		}
+
+		remoteAiLastStartedAt = Date.now();
+		try {
+			const result = await task(fallbackModels);
+			remoteAiCache.set(key, { expiresAt: Date.now() + REMOTE_AI_CACHE_TTL_MS, value: result });
+			return result;
+		} catch (error) {
+			if (isQuotaOrRateLimitError(error)) {
+				remoteAiBackoffUntil = Date.now() + REMOTE_AI_BACKOFF_MS;
+				console.warn(`[ai] ${label} hit Gemini quota/rate limits; using local fallback for ${Math.ceil(REMOTE_AI_BACKOFF_MS / 1000)}s`);
+				return fallback();
+			}
+
+			throw error;
+		}
+	});
+
+	remoteAiPending.set(key, request);
+
+	try {
+		return await request;
+	} finally {
+		remoteAiPending.delete(key);
+	}
+};
 
 const jsonBlock = /```(?:json)?\s*([\s\S]*?)```/i;
 
@@ -217,119 +307,123 @@ const buildLocalReplyDrafts = ({
 	});
 };
 
-const shouldUseRemoteAi = () => !aiDisabled && client !== null;
+const shouldUseRemoteAi = () => {
+	const { aiDisabled } = getAiConfig();
+	return !aiDisabled && client !== null;
+};
 
 export const isGoogleGenAIConfigured = () => shouldUseRemoteAi();
 
 export const generateThreadDraft = async (prompt: string) => {
-	if (!shouldUseRemoteAi()) {
-		return buildLocalThreadDraft(prompt);
-	}
-
-	const remoteClient = client;
-	if (!remoteClient) {
-		return buildLocalThreadDraft(prompt);
-	}
-
-	let lastError: unknown;
-	for (const model of fallbackModels) {
-		try {
-			const response = await remoteClient.models.generateContent({
-				model,
-				contents: [
-					{
-						role: 'user',
-						parts: [
+	return await runRemoteAiRequest({
+		key: hashAiRequest('thread-draft', prompt),
+		label: 'thread draft',
+		fallback: () => buildLocalThreadDraft(prompt),
+		task: async (fallbackModels) => {
+			let lastError: unknown;
+			for (const model of fallbackModels) {
+				try {
+					const response = await client!.models.generateContent({
+						model,
+						contents: [
 							{
-								text: [
-									'Write a short caveman social post draft for Cavenet.',
-									'Keep the tone playful, simple, and in first person.',
-									'Return only valid JSON with these keys: title, content, type, imagePrompt.',
-									'Allowed type values are text, image, or mixed.',
-									`Prompt: ${prompt}`,
-								].join('\n'),
+								role: 'user',
+								parts: [
+									{
+										text: [
+											'Write a short caveman social post draft for Cavenet.',
+											'Keep the tone playful, simple, and in first person.',
+											'Return only valid JSON with these keys: title, content, type, imagePrompt.',
+											'Allowed type values are text, image, or mixed.',
+											`Prompt: ${prompt}`,
+										].join('\n'),
+									},
+								],
 							},
 						],
-					},
-				],
-			});
+					});
 
-			const text = response.text?.trim();
-			if (!text) {
-				throw new Error('Google GenAI returned an empty response.');
+					const text = response.text?.trim();
+					if (!text) {
+						throw new Error('Google GenAI returned an empty response.');
+					}
+
+					return parseDraft(text);
+				} catch (error) {
+					lastError = error;
+					const message = error instanceof Error ? error.message : String(error);
+					const isModelMismatch = /not found|not supported/i.test(message);
+					if (!isModelMismatch || model === fallbackModels[fallbackModels.length - 1]) {
+						throw error;
+					}
+				}
 			}
 
-			return parseDraft(text);
-		} catch (error) {
-			lastError = error;
-			const message = error instanceof Error ? error.message : String(error);
-			const isModelMismatch = /not found|not supported/i.test(message);
-			if (!isModelMismatch || model === fallbackModels[fallbackModels.length - 1]) {
-				throw error;
-			}
-		}
-	}
-
-	throw lastError instanceof Error ? lastError : new Error('Google GenAI request failed.');
+			throw lastError instanceof Error ? lastError : new Error('Google GenAI request failed.');
+		},
+	});
 };
 
 export const generateCharacterDraft = async () => {
-	if (!client) {
-		return buildLocalCharacterDraft();
-	}
-
-	let lastError: unknown;
-	for (const model of fallbackModels) {
-		try {
-			const response = await client.models.generateContent({
-				model,
-				contents: [
-					{
-						role: 'user',
-						parts: [
+	return await runRemoteAiRequest({
+		key: 'character-draft',
+		label: 'character draft',
+		fallback: () => buildLocalCharacterDraft(),
+		task: async (fallbackModels) => {
+			let lastError: unknown;
+			for (const model of fallbackModels) {
+				try {
+					const response = await client!.models.generateContent({
+						model,
+						contents: [
 							{
-								text: [
-									'Create one original caveman character for Cavenet.',
-									'Return only valid JSON with keys: username, bio.',
-									'Keep the username short and playful.',
-									'Keep the bio to one sentence.',
-								].join('\n'),
+								role: 'user',
+								parts: [
+									{
+										text: [
+											'Create one original caveman character for Cavenet.',
+											'Return only valid JSON with keys: username, bio.',
+											'Keep the username short and playful.',
+											'Keep the bio to one sentence.',
+										].join('\n'),
+									},
+								],
 							},
 						],
-					},
-				],
-			});
+					});
 
-			const text = response.text?.trim();
-			if (!text) {
-				throw new Error('Google GenAI returned an empty response.');
+					const text = response.text?.trim();
+					if (!text) {
+						throw new Error('Google GenAI returned an empty response.');
+					}
+
+					const fenced = text.match(jsonBlock)?.[1] ?? text;
+					const start = fenced.indexOf('{');
+					const end = fenced.lastIndexOf('}');
+					const raw = start >= 0 && end >= 0 ? fenced.slice(start, end + 1) : fenced;
+					const parsed = JSON.parse(raw) as Partial<CharacterDraft>;
+
+					const username = String(parsed.username ?? '').trim().slice(0, 24);
+					const bio = String(parsed.bio ?? '').trim().slice(0, 180);
+
+					if (!username || !bio) {
+						throw new Error('Google GenAI returned an invalid character draft.');
+					}
+
+					return { username, bio };
+				} catch (error) {
+					lastError = error;
+					const message = error instanceof Error ? error.message : String(error);
+					const isModelMismatch = /not found|not supported/i.test(message);
+					if (!isModelMismatch || model === fallbackModels[fallbackModels.length - 1]) {
+						break;
+					}
+				}
 			}
 
-			const fenced = text.match(jsonBlock)?.[1] ?? text;
-			const start = fenced.indexOf('{');
-			const end = fenced.lastIndexOf('}');
-			const raw = start >= 0 && end >= 0 ? fenced.slice(start, end + 1) : fenced;
-			const parsed = JSON.parse(raw) as Partial<CharacterDraft>;
-
-			const username = String(parsed.username ?? '').trim().slice(0, 24);
-			const bio = String(parsed.bio ?? '').trim().slice(0, 180);
-
-			if (!username || !bio) {
-				throw new Error('Google GenAI returned an invalid character draft.');
-			}
-
-			return { username, bio };
-		} catch (error) {
-			lastError = error;
-			const message = error instanceof Error ? error.message : String(error);
-			const isModelMismatch = /not found|not supported/i.test(message);
-			if (!isModelMismatch || model === fallbackModels[fallbackModels.length - 1]) {
-				break;
-			}
-		}
-	}
-
-	return buildLocalCharacterDraft();
+			throw lastError instanceof Error ? lastError : new Error('Google GenAI request failed.');
+		},
+	});
 };
 
 export const generateThreadReplies = async ({
@@ -351,15 +445,6 @@ export const generateThreadReplies = async ({
 	qualityScore: number;
 	maxReplies?: number;
 }) => {
-	if (!shouldUseRemoteAi()) {
-		return buildLocalReplyDrafts({ profiles, qualityScore, threadTitle, mood });
-	}
-
-	const remoteClient = client;
-	if (!remoteClient) {
-		return buildLocalReplyDrafts({ profiles, qualityScore, threadTitle, mood });
-	}
-
 	if (profiles.length === 0 || maxReplies <= 0) {
 		return [] as AiReplyDraft[];
 	}
@@ -387,29 +472,36 @@ export const generateThreadReplies = async ({
 		profilePrompt,
 	].join('\n');
 
-	let lastError: unknown;
-	for (const model of fallbackModels) {
-		try {
-			const response = await remoteClient.models.generateContent({
-				model,
-				contents: prompt,
-			});
+	return await runRemoteAiRequest({
+		key: hashAiRequest('thread-replies', prompt),
+		label: 'thread replies',
+		fallback: () => buildLocalReplyDrafts({ profiles, qualityScore, threadTitle, mood }),
+		task: async (fallbackModels) => {
+			let lastError: unknown;
+			for (const model of fallbackModels) {
+				try {
+					const response = await client!.models.generateContent({
+						model,
+						contents: prompt,
+					});
 
-			const text = response.text?.trim();
-			if (!text) {
-				throw new Error('Google GenAI returned an empty response.');
+					const text = response.text?.trim();
+					if (!text) {
+						throw new Error('Google GenAI returned an empty response.');
+					}
+
+					return parseReplyDrafts(text);
+				} catch (error) {
+					lastError = error;
+					const message = error instanceof Error ? error.message : String(error);
+					const isModelMismatch = /not found|not supported/i.test(message);
+					if (!isModelMismatch || model === fallbackModels[fallbackModels.length - 1]) {
+						throw error;
+					}
+				}
 			}
 
-			return parseReplyDrafts(text);
-		} catch (error) {
-			lastError = error;
-			const message = error instanceof Error ? error.message : String(error);
-			const isModelMismatch = /not found|not supported/i.test(message);
-			if (!isModelMismatch || model === fallbackModels[fallbackModels.length - 1]) {
-				throw error;
-			}
-		}
-	}
-
-	throw lastError instanceof Error ? lastError : new Error('Google GenAI request failed.');
+			throw lastError instanceof Error ? lastError : new Error('Google GenAI request failed.');
+		},
+	});
 };

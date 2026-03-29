@@ -54,7 +54,7 @@ const CharacterSelect: React.FC<CharacterSelectProps> = ({
     if (generatingDraft) return;
     setGeneratingDraft(true);
     try {
-      const draft = await apiFetch('/ai/character-draft', { method: 'POST', body: '{}' });
+      const draft = await apiFetch<{ username?: string; bio?: string }>('/ai/character-draft', { method: 'POST', body: '{}' });
       setNewName(draft.username ?? '');
       setNewBio(draft.bio ?? '');
       setCreating(true);

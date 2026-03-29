@@ -5,6 +5,7 @@ import { eq, desc, sql, and, inArray } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import { simulatedDaysBetween, TIME_SCALE, getSimulatedNow } from './time';
 import { generateCharacterDraft, generateThreadDraft, generateThreadReplies, isGoogleGenAIConfigured, pickReplyMood } from './ai';
+import { buildCharacterAbbreviation } from './logic';
 
 // ── Constants ──
 
@@ -74,9 +75,9 @@ const scoreThreadQuality = (title: string | null | undefined, content: string) =
 };
 
 const getReplyTargetFromQuality = (qualityScore: number, availableNpcCount: number) => {
-  if (qualityScore < 25) return 0;
-  const tierTarget = qualityScore < 45 ? 1 : qualityScore < 60 ? 2 : qualityScore < 75 ? 3 : qualityScore < 90 ? 4 : 5;
-  return Math.min(availableNpcCount, tierTarget, 5);
+  if (availableNpcCount <= 0) return 0;
+  const tierTarget = qualityScore < 25 ? 1 : qualityScore < 45 ? 1 : qualityScore < 60 ? 2 : qualityScore < 75 ? 3 : qualityScore < 90 ? 4 : 5;
+  return Math.min(availableNpcCount, Math.max(1, tierTarget), 5);
 };
 
 const getReplyFireReward = (qualityScore: number, isOwnerReply: boolean) => {
@@ -94,9 +95,9 @@ const getLikeFireCap = (qualityScore: number, availableUsers: number) => {
 };
 
 const getOrganicLikeBudget = (qualityScore: number, availableNpcCount: number) => {
-  if (qualityScore < 25) return 0;
-  const base = qualityScore < 45 ? 1 : qualityScore < 70 ? 2 : qualityScore < 85 ? 4 : 6;
-  return Math.min(base, Math.max(0, availableNpcCount));
+  if (availableNpcCount <= 0) return 0;
+  const base = qualityScore < 25 ? 1 : qualityScore < 45 ? 1 : qualityScore < 70 ? 2 : qualityScore < 85 ? 4 : 6;
+  return Math.min(Math.max(1, base), Math.max(0, availableNpcCount));
 };
 
 const HUNT_COOLDOWN_BASE_SIM_MINUTES = 30;
@@ -690,6 +691,7 @@ const submitAutoPost = async (agent: AutoPostAgent) => {
 
   const qualityScore = scoreThreadQuality(thread.title ?? null, thread.content ?? '');
   console.info(`[ai-scheduler] ${agent.username} posted thread ${thread.id} (quality=${qualityScore}, tribe=${tribeId ?? 'none'})`);
+  setThreadEngagementSnapshot(thread.id, { status: 'queued' });
   void queueThreadEngagement(thread, agent.username, qualityScore);
 };
 
@@ -882,6 +884,47 @@ const enrichThreads = async (threadRows: any[]) => {
   }));
 };
 
+const toSortTime = (value: unknown) => {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+};
+
+const sortFeedThreads = (threadsToSort: any[], sort: string) => {
+  const sorted = [...threadsToSort];
+
+  sorted.sort((a, b) => {
+    const aCreated = toSortTime(a.createdAt);
+    const bCreated = toSortTime(b.createdAt);
+    const aLastReply = toSortTime(a.lastReplyAt ?? a.createdAt);
+    const bLastReply = toSortTime(b.lastReplyAt ?? b.createdAt);
+    const aFire = Number(a.fireGenerated ?? 0);
+    const bFire = Number(b.fireGenerated ?? 0);
+
+    if (sort === 'hottest') {
+      if (bFire !== aFire) return bFire - aFire;
+      if (bLastReply !== aLastReply) return bLastReply - aLastReply;
+      return bCreated - aCreated;
+    }
+
+    if (sort === 'active') {
+      if (bLastReply !== aLastReply) return bLastReply - aLastReply;
+      if (bFire !== aFire) return bFire - aFire;
+      return bCreated - aCreated;
+    }
+
+    if (bCreated !== aCreated) return bCreated - aCreated;
+    if (bFire !== aFire) return bFire - aFire;
+    return bLastReply - aLastReply;
+  });
+
+  return sorted;
+};
+
 // ── App ──
 
 const app = new Elysia()
@@ -932,9 +975,9 @@ const app = new Elysia()
       return created;
     }, {
       body: t.Object({
-        username: t.String(),
-        bio: t.Optional(t.String()),
-        avatar: t.Optional(t.String()),
+        username: t.String({ minLength: 1, maxLength: 32 }),
+        bio: t.Optional(t.String({ maxLength: 240 })),
+        avatar: t.Optional(t.String({ maxLength: 512 })),
       })
     })
 
@@ -984,7 +1027,7 @@ const app = new Elysia()
       return { status: 'updated' };
     }, {
       body: t.Object({
-        bio: t.String(),
+        bio: t.String({ minLength: 1, maxLength: 240 }),
       })
     })
 
@@ -1004,34 +1047,12 @@ const app = new Elysia()
       const tribeId = (query as any)?.tribeId;
       const whereClause = tribeId ? eq(threads.tribeId, tribeId) : undefined;
 
-      let rows;
-      if (sort === 'hottest') {
-        rows = await db.select().from(threads)
-          .where(whereClause)
-          .orderBy(desc(threads.fireGenerated))
-          .limit(50);
-      } else {
-        // newest + active both start with createdAt desc
-        rows = await db.select().from(threads)
-          .where(whereClause)
-          .orderBy(desc(threads.createdAt))
-          .limit(50);
-      }
+      const rows = await db.select().from(threads)
+        .where(whereClause)
+        .limit(50);
 
       const enriched = await enrichThreads(rows);
-
-      // For 'active' sort, re-sort by lastReplyAt on enriched data
-      if (sort === 'active') {
-        enriched.sort((a: any, b: any) => {
-          const aTime = a.lastReplyAt ?? a.createdAt;
-          const bTime = b.lastReplyAt ?? b.createdAt;
-          const aMs = aTime instanceof Date ? aTime.getTime() : Number(aTime);
-          const bMs = bTime instanceof Date ? bTime.getTime() : Number(bTime);
-          return bMs - aMs;
-        });
-      }
-
-      return enriched;
+      return sortFeedThreads(enriched, sort);
     })
 
     .get('/stats', async () => {
@@ -1169,16 +1190,17 @@ const app = new Elysia()
       const creator = await db.query.users.findFirst({ where: eq(users.id, userId) });
       const creatorUsername = creator?.username ?? 'Unknown';
       const qualityScore = scoreThreadQuality(thread.title ?? null, thread.content ?? '');
+      setThreadEngagementSnapshot(thread.id, { status: 'queued' });
       void queueThreadEngagement(thread, creatorUsername, qualityScore);
 
       return thread;
     }, {
       body: t.Object({
-        title: t.Optional(t.String()),
+        title: t.Optional(t.String({ maxLength: 80 })),
         type: t.Union([t.Literal('text'), t.Literal('image'), t.Literal('mixed')]),
-        content: t.String(),
-        imageUrl: t.Optional(t.String()),
-        tribeId: t.Optional(t.String())
+        content: t.String({ minLength: 1, maxLength: 2000 }),
+        imageUrl: t.Optional(t.String({ maxLength: 512 })),
+        tribeId: t.Optional(t.String({ minLength: 1, maxLength: 64 }))
       })
     })
 
@@ -1265,7 +1287,7 @@ const app = new Elysia()
       return result;
     }, {
       body: t.Object({
-        content: t.String()
+        content: t.String({ minLength: 1, maxLength: 500 })
       })
     })
 
@@ -1327,7 +1349,7 @@ const app = new Elysia()
       return outcome;
     }, {
       body: t.Object({
-        runId: t.String(),
+        runId: t.String({ minLength: 1, maxLength: 128 }),
         score: t.Number(),
       }),
     })
@@ -1408,8 +1430,7 @@ const app = new Elysia()
       if (user.food < TRIBE_CREATION_COST) throw new Error('Not enough food to create tribe');
 
       // Auto-generate abbreviation from name if not provided
-      const abbr = body.abbreviation
-        || body.name.split(/\s+/).map((w: string) => w[0]).join('').toUpperCase().slice(0, 4);
+      const abbr = body.abbreviation?.trim() || buildCharacterAbbreviation(body.name);
 
       const tribe = await db.transaction(async (tx) => {
         await tx.update(users)
@@ -1436,9 +1457,9 @@ const app = new Elysia()
       return tribe;
     }, {
       body: t.Object({
-        name: t.String(),
-        abbreviation: t.Optional(t.String()),
-        description: t.Optional(t.String()),
+        name: t.String({ minLength: 1, maxLength: 40 }),
+        abbreviation: t.Optional(t.String({ minLength: 1, maxLength: 4 })),
+        description: t.Optional(t.String({ maxLength: 160 })),
       })
     })
 
@@ -1493,7 +1514,7 @@ const app = new Elysia()
       return await generateThreadDraft(body.prompt);
     }, {
       body: t.Object({
-        prompt: t.String(),
+        prompt: t.String({ minLength: 1, maxLength: 1000 }),
       }),
     })
 

@@ -50,7 +50,7 @@ const StatsPage: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await apiFetch('/stats');
+      const data = await apiFetch<any>('/stats');
       setStats(data);
     } catch (e) {
       console.error('Failed to load stats', e);

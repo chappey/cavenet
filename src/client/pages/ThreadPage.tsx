@@ -31,7 +31,7 @@ const ThreadPage: React.FC<ThreadPageProps> = ({ userId, onRefreshUser }) => {
     if (!id) return;
     try {
       setLoading(true);
-      const data = await apiFetch(`/threads/${id}`);
+      const data = await apiFetch<any>(`/threads/${id}`);
       setThread(data);
     } catch (e) {
       console.error('Failed to load thread', e);

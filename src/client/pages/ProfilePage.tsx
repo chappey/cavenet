@@ -28,7 +28,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onRefreshUser, onPost
     try {
       setLoading(true);
       setError(null);
-      const data = await apiFetch(`/users/${profileId}`);
+      const data = await apiFetch<any>(`/users/${profileId}`);
       setProfile(data);
     } catch (e: any) {
       console.error('Failed to load profile', e);

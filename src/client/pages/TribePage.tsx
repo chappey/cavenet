@@ -24,7 +24,7 @@ const TribePage: React.FC<TribePageProps> = ({ userId, onRefreshUser }) => {
     try {
       setLoading(true);
       setError(null);
-      const data = await apiFetch(`/tribes/${id}`);
+      const data = await apiFetch<any>(`/tribes/${id}`);
       setTribe(data);
     } catch (e: any) {
       console.error('Failed to load tribe', e);
